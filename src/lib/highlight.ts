@@ -2,6 +2,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { codeToHtml } from "shiki";
 
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import { trace } from "@/lib/trace";
 
 /**
  * Syntax-highlight a snippet on the server.
@@ -21,6 +22,8 @@ export async function highlight(code: string): Promise<string> {
   // would drag the whole route's revalidate window down with it.
   cacheLife("max");
   cacheTag(CACHE_TAGS.snippets);
+
+  trace("shared", "data", "highlight", "RAN", "shiki");
 
   return codeToHtml(code, {
     lang: "tsx",

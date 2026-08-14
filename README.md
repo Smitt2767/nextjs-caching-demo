@@ -245,6 +245,54 @@ catalog's frozen timestamp while the country panel's stays put, and
 The one thing it cannot reach is the sky `use cache: private` slot — that
 lives in the browser, so only a reload clears it.
 
+## Watching the cache work (server trace)
+
+Every slot logs at two layers — the component and the data it reads. **The
+output goes to the terminal running `next dev` / `next start`, not the browser
+console**, because these are Server Components.
+
+That placement is what makes it useful. Code inside a `"use cache"` scope only
+runs on a **miss**, so its line only prints when the cache did not serve the
+request. Uncached callers print unconditionally:
+
+```
+requested + RAN   ->  cache miss, the work actually happened
+requested only    ->  cache hit, the work was skipped
+```
+
+A warm request to `/ppr` reads like this (colour and padding stripped):
+
+```
+G1     component  CachedCatalog                requested   data cached
+G2     component  CountrySlot                  requested   no cache
+G2     component  CachedCountrySlot            requested   data cached
+G2     component  ComponentCachedCountrySlot   requested   wrapper (uncached)
+G3     component  PrivateComponentCountrySlot  RAN         server render (never server-cached)
+shared data       fetchCountryOffer            RAN         code=IN
+G2     data       loadCachedCountryOffer       cached-hit  code=IN 0ms
+shared data       simulateRenderWork           RAN         400ms
+G2     component  CachedCountrySlot            rendered    code=IN render=400ms
+```
+
+Read it slot by slot:
+
+- **G1 catalog** — `CachedCatalog requested` with no `getCatalog RAN`: the data
+  cache served it.
+- **G1 component-cached catalog** — no line at all. The whole function was
+  skipped, which is precisely what caching a component means.
+- **G2 uncached** — `fetchCountryOffer RAN`: paid the 2000ms again.
+- **G2 data cached** — `cached-hit 0ms` for the lookup, but `simulateRenderWork
+  RAN` right after. The fetch was free; the render was not.
+- **G2 component cached** — the wrapper prints, `CachedCountryPanel` does not.
+  Both fetch and render were skipped.
+- **G3 private** — always `RAN`, because private results are never stored on
+  the server. Its payoff is on the client, not here.
+
+`fetchCountryOffer RAN` is the single clearest line in the trace: if it prints,
+the 2000ms was really spent. Grep for it.
+
+Set `CACHE_TRACE=0` to silence the whole thing.
+
 ## Where the country comes from
 
 **Next.js gives us nothing here.** `NextRequest.geo` and `.ip` were removed in

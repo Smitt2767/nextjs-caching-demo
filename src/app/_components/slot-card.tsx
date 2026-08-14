@@ -3,11 +3,7 @@ import { highlight } from "@/lib/highlight";
 import { SNIPPETS, type SnippetId } from "@/lib/snippets";
 
 export type SlotVariant =
-  | "static"
-  | "uncached"
-  | "data-cached"
-  | "component"
-  | "private";
+  "static" | "uncached" | "data-cached" | "component" | "private";
 
 /**
  * Colour encodes the caching strategy — but it is never the only cue: every
@@ -116,7 +112,10 @@ export async function SlotCard({
       <div className="flex-1 px-4 pb-4">{children}</div>
 
       <div className="mt-auto">
-        <Disclosure testId={`about-toggle-${snippetId}`} label="what this shows">
+        <Disclosure
+          testId={`about-toggle-${snippetId}`}
+          label="what this shows"
+        >
           <div className="space-y-2 text-[13px] leading-relaxed text-ink-muted">
             {description}
           </div>

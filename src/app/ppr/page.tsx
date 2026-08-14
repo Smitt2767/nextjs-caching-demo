@@ -13,10 +13,15 @@ import { PrivateComponentCountrySlot } from "@/app/_components/private-cached";
 import { SlotCard } from "@/app/_components/slot-card";
 import { SlotSkeleton, StatusLine } from "@/app/_components/slot-body";
 import { getCatalog } from "@/lib/catalog";
+import { trace } from "@/lib/trace";
 
 // Cached with `use cache` and free of request-time input, so it is prerendered
 // straight into the static shell — no <Suspense> needed.
 async function CachedCatalog() {
+  // The component is not cached, only its data — so this prints every request
+  // while `getCatalog RAN` stays quiet on a hit.
+  trace("G1", "component", "CachedCatalog", "requested", "data cached");
+
   const catalog = await getCatalog();
   return (
     <>
@@ -53,6 +58,8 @@ function SectionHeading({
   );
 }
 
+export const instant = false;
+
 export default function PprDemo() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6 lg:py-14">
@@ -80,7 +87,11 @@ export default function PprDemo() {
               ["bg-red-500", "Uncached", "pays full cost every request"],
               ["bg-amber-500", "Data cached", "fetch cached, render is not"],
               ["bg-violet-500", "Component cached", "fetch and render cached"],
-              ["bg-sky-500", "Private", "cached in your browser, not the server"],
+              [
+                "bg-sky-500",
+                "Private",
+                "cached in your browser, not the server",
+              ],
             ] as const
           ).map(([dot, term, desc]) => (
             <div key={term} className="flex items-baseline gap-2">
@@ -290,11 +301,10 @@ export default function PprDemo() {
             eyebrow="Group 3"
             title="Cached in your browser — no loading on navigation"
           >
-            The red slot from group 2, unchanged except for one directive.
-            Click <span className="font-mono">← all demos</span> and come back:
-            this one is already there, while the red slot above shows its
-            skeleton again. A full reload clears browser memory, so it is slow
-            again.
+            The red slot from group 2, unchanged except for one directive. Click{" "}
+            <span className="font-mono">← all demos</span> and come back: this
+            one is already there, while the red slot above shows its skeleton
+            again. A full reload clears browser memory, so it is slow again.
           </SectionHeading>
         </div>
 
@@ -310,8 +320,8 @@ export default function PprDemo() {
                   The result is held in your browser, so a client navigation
                   reuses it with no server round trip and{" "}
                   <strong>no loading state</strong>. The red slot in group 2 is
-                  the identical component without this directive, and it shows
-                  a skeleton every time.
+                  the identical component without this directive, and it shows a
+                  skeleton every time.
                 </p>
                 <p>
                   It also reads <code className="font-mono">cookies()</code>{" "}

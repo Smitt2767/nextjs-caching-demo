@@ -2,6 +2,7 @@ import { cacheLife } from "next/cache";
 import { cookies } from "next/headers";
 
 import { OfferBody, StatusLine } from "@/app/_components/slot-body";
+import { trace } from "@/lib/trace";
 import {
   DEFAULT_COUNTRY,
   fetchCountryOffer,
@@ -30,6 +31,17 @@ import { COUNTRY_COOKIE } from "@/lib/geo";
 export async function PrivateComponentCountrySlot() {
   "use cache: private";
   cacheLife({ stale: 300 });
+
+  // Private results are never stored on the server, so this prints on every
+  // server render — unlike the G2 cached component, which goes quiet. What
+  // the browser cache buys shows up on a client navigation, not here.
+  trace(
+    "G3",
+    "component",
+    "PrivateComponentCountrySlot",
+    "RAN",
+    "server render (never server-cached)",
+  );
 
   const raw = (await cookies()).get(COUNTRY_COOKIE)?.value;
   const code = isCountryCode(raw) ? raw : DEFAULT_COUNTRY;

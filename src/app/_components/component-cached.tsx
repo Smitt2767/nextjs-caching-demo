@@ -1,4 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
+import { trace } from "@/lib/trace";
 
 import { CACHE_TAGS } from "@/lib/cache-tags";
 
@@ -27,6 +28,10 @@ export async function ComponentCachedCatalog() {
   cacheLife("hours");
   cacheTag(CACHE_TAGS.catalogPanel);
 
+  // Inside the cached component: silent on a hit, because the whole function
+  // is skipped and the stored markup is replayed instead.
+  trace("G1", "component", "ComponentCachedCatalog", "RAN", "cache miss");
+
   const catalog = await getCatalog();
   const renderMs = await simulateRenderWork();
   const renderedAt = new Date().toISOString();
@@ -37,7 +42,10 @@ export async function ComponentCachedCatalog() {
         timerId="catalog-component"
         status={`rendered once in ${renderMs}ms · ${renderedAt}`}
       />
-      <CatalogList entries={catalog.entries} testId="component-cached-catalog" />
+      <CatalogList
+        entries={catalog.entries}
+        testId="component-cached-catalog"
+      />
     </>
   );
 }
@@ -73,6 +81,10 @@ async function CachedCountryPanel({ code }: { code: CountryCode }) {
   cacheLife("hours");
   cacheTag(CACHE_TAGS.countryPanel(code));
 
+  // Silent on a hit. Pair it with the wrapper's "requested" line below: that
+  // one always prints, so wrapper-without-panel means the cache served it.
+  trace("G2", "component", "CachedCountryPanel", "RAN", `code=${code}`);
+
   const offer = await fetchCountryOffer(code);
   const renderMs = await simulateRenderWork();
   const renderedAt = new Date().toISOString();
@@ -101,6 +113,16 @@ async function CachedCountryPanel({ code }: { code: CountryCode }) {
  * component.
  */
 export async function ComponentCachedCountrySlot() {
+  // Uncached wrapper: always prints. If no "CachedCountryPanel RAN" line
+  // follows it, the cached markup was replayed.
+  trace(
+    "G2",
+    "component",
+    "ComponentCachedCountrySlot",
+    "requested",
+    "wrapper (uncached)",
+  );
+
   const { code } = await resolveCountry();
   return <CachedCountryPanel key={code} code={code} />;
 }
