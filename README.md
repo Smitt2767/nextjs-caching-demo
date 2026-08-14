@@ -298,6 +298,30 @@ Supported codes are `IN`, `US`, `UK` (`src/lib/countries.ts`). Everything those
 modules return is dummy data — the demo is about *when* content arrives, not
 what it says.
 
+## The hydration mismatch you may see once
+
+React error #418 (a text mismatch) appears on `/ppr` if the status lines are
+not marked `suppressHydrationWarning`. It is worth understanding rather than
+just silencing, because it is a real property of `use cache`:
+
+`use cache` stores entries **in memory**, so a freshly started server has an
+empty cache. The document it serves then contains two different values for the
+same text — the build's timestamp in the prerendered static shell, and a newly
+computed one in the streamed slots. Verified on the wire:
+
+```
+1 x  computed once at 18:13:49.048Z   <- build-time prerender
+2 x  computed once at 18:13:56.360Z   <- runtime cache fill
+```
+
+React patches the text during hydration and reports the mismatch. The
+divergence is expected; only the warning is noise, so `StatusLine` carries
+`suppressHydrationWarning`.
+
+On Vercel this shows up more often than it does locally: instances recycle, and
+each new one starts with a cold in-memory cache. `use cache: remote` is the
+durable option if you want entries to survive that.
+
 ## Two things worth knowing
 
 **The cache timestamp differs between the build and the first request.**

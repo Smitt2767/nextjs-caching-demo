@@ -25,7 +25,18 @@ export function StatusLine({
       <span className="rounded bg-ink px-1.5 py-0.5 font-bold text-surface-raised">
         <ArrivalTimer id={timerId} />
       </span>
-      <span className="text-ink-subtle [&_[data-verdict]]:font-bold [&_[data-verdict]]:text-ink">
+      {/* suppressHydrationWarning: a status line may carry a cache timestamp,
+          and those legitimately differ between the build-time prerender and
+          the first runtime cache fill. A freshly started server has an empty
+          in-memory cache, so the document it serves contains the build's
+          timestamp in the static shell and a newly computed one in the
+          streamed slots — two values for the same text, which React reports as
+          a mismatch (#418). The divergence is real and expected; only the
+          warning is noise. See the README. */}
+      <span
+        suppressHydrationWarning
+        className="text-ink-subtle [&_[data-verdict]]:font-bold [&_[data-verdict]]:text-ink"
+      >
         {status}
       </span>
     </div>
