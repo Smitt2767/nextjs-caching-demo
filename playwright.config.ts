@@ -11,6 +11,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: "list",
+  // `next start` is a single process, and every request to /ppr does seconds
+  // of deliberately slow work across six slots. Too many parallel workers
+  // queue behind each other and turn real waits into spurious timeouts.
+  workers: 2,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
@@ -26,7 +31,9 @@ export default defineConfig({
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: `EXPOSE_TESTING_API=1 pnpm build && EXPOSE_TESTING_API=1 pnpm start --port ${PORT}`,
+        command:
+          `NEXT_DIST_DIR=.next-e2e EXPOSE_TESTING_API=1 pnpm build && ` +
+          `NEXT_DIST_DIR=.next-e2e EXPOSE_TESTING_API=1 pnpm start --port ${PORT}`,
         url: BASE_URL,
         reuseExistingServer: false,
         timeout: 180_000,

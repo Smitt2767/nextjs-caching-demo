@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
+/*
+ * Surfaces are tokens, not raw colours in components. The four strategy
+ * accents (emerald / red / amber / violet) stay as Tailwind palette classes,
+ * because on this page colour carries meaning — it encodes which caching
+ * strategy a card demonstrates — and is always paired with a text label.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --surface: #f8fafc; /* page background */
+  --surface-raised: #ffffff; /* cards */
+  --surface-sunken: #f1f5f9; /* code wells, skeletons */
+  --ink: #0f172a; /* primary text */
+  --ink-muted: #475569; /* secondary text — 7.2:1 on --surface */
+  --ink-subtle: #64748b; /* labels — 4.8:1 on --surface */
+  --line: #e2e8f0; /* borders */
+  --ring: #0f172a; /* focus ring */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --surface: #0f172a;
+    --surface-raised: #1b2336;
+    --surface-sunken: #131a2b;
+    --ink: #f8fafc;
+    --ink-muted: #cbd5e1; /* 9.8:1 on --surface-raised */
+    --ink-subtle: #94a3b8; /* 5.6:1 on --surface-raised */
+    --line: #2c3852;
+    --ring: #f8fafc;
   }
 }
 
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-line: var(--line);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Every interactive control keeps a visible focus ring. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/*
+ * Shiki dual themes. The server emits both palettes as CSS variables on the
+ * same markup; these rules pick one, so no highlighting code ships to the
+ * browser and there is no flash on load.
+ */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+  background-color: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  .shiki,
+  .shiki span {
+    color: var(--shiki-dark);
+    background-color: transparent;
+  }
+}
+
+.shiki {
+  padding: 0.875rem 1rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+
+.shiki code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+}
+
+/*
+ * The skeleton pulse is the only motion on the page, and it signals "still
+ * loading" — so it is honoured, but stopped for users who ask for less motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The e2e rig's build output (see distDir in next.config.ts).
+    ".next-e2e/**",
   ]),
 ]);
 

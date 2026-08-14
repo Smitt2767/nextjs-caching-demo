@@ -14,11 +14,13 @@
 /coverage
 /test-results/
 /playwright-report/
+/.playwright-mcp/
 /blob-report/
 /playwright/.cache/
 
 # next.js
 /.next/
+/.next-e2e/
 /out/
 
 # production
