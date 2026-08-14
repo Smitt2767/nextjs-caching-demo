@@ -13,7 +13,8 @@ export type SnippetId =
   | "country"
   | "country-cached"
   | "country-component"
-  | "private-component";
+  | "private-component"
+  | "timing";
 
 export type Snippet = {
   /** Where the real code lives. */
@@ -24,6 +25,53 @@ export type Snippet = {
 };
 
 export const SNIPPETS: Record<SnippetId, Snippet> = {
+  timing: {
+    file: "src/app/_components/arrival-timer.tsx",
+    point: "Stamped while the browser parses the chunk, before React loads.",
+    code: `export function ArrivalTimer({ id }: { id: string }) {
+  const domId = \`arrival-\${id}\`
+
+  return (
+    <>
+      <span
+        id={domId}
+        suppressHydrationWarning
+        ref={(node) => {
+          // Path 2 — client-side updates, after hydration is done.
+          // Scripts React creates client-side never execute, so this
+          // covers re-renders (switching country, navigating back).
+          if (node && !node.dataset.renderedAt) {
+            const ms = Math.round(performance.now())
+            node.dataset.renderedAt = String(ms)
+            node.textContent = \`rendered @\${ms}ms\`
+          }
+        }}
+      >
+        rendered @…
+      </span>
+
+      {/* Path 1 — initial load. This runs while the browser is still
+          parsing THIS chunk of the document, so it records the moment
+          the markup arrived. Shell chunks stamp at parse time; a
+          streamed chunk stamps when it lands. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            \`(function(){var n=document.getElementById("\${domId}");\` +
+            \`if(n&&!n.dataset.renderedAt){\` +
+            \`var t=Math.round(performance.now());\` +
+            \`n.dataset.renderedAt=t;\` +
+            \`n.textContent="rendered @"+t+"ms";}})()\`,
+        }}
+      />
+    </>
+  )
+}
+
+// Whichever fires first wins; data-rendered-at stops the other
+// from overwriting it.`,
+  },
+
   shell: {
     file: "src/app/page.tsx",
     point: "No await anywhere — this subtree is pure markup, so it prerenders.",

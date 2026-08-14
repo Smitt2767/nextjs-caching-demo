@@ -43,6 +43,9 @@ Every panel carries the same badge — `rendered @<n>ms`, meaning *when this
 panel appeared in the browser*, counted from the start of the page load. One
 number with one meaning, so the panels are directly comparable.
 
+The index page carries a collapsible explanation of this, with the measuring
+code highlighted inline — open `/` and expand **how it works**.
+
 That number is taken by an inline `<script>` sitting right after each badge,
 which runs while the browser is still parsing that chunk of the document —
 before React has loaded. This matters more than it sounds: React does not

@@ -153,6 +153,29 @@ test.describe("index", () => {
     await expect(page.getByTestId("home-shell")).toBeVisible();
     await expect(page.getByTestId("ppr-link")).toHaveAttribute("href", "/ppr");
   });
+
+  test("explains the timing badges behind a collapsible", async ({ page }) => {
+    await page.goto("/");
+
+    const explainer = page.getByTestId("timing-explainer");
+    await expect(explainer).toBeVisible();
+
+    // Collapsed by default, but the highlighted code is already in the
+    // document — the index is fully static, so nothing is fetched on open.
+    const toggle = page.getByTestId("timing-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(explainer.locator(".shiki")).toHaveCount(1);
+    await expect(explainer.locator(".shiki:visible")).toHaveCount(0);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(explainer.locator(".shiki:visible")).toHaveCount(1);
+    // The measurement it documents: the inline script, not an effect.
+    await expect(explainer.locator(".shiki")).toContainText("performance.now()");
+
+    await toggle.click();
+    await expect(explainer.locator(".shiki:visible")).toHaveCount(0);
+  });
 });
 
 test.describe("static wrappers", () => {
