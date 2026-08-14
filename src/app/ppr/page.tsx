@@ -10,6 +10,7 @@ import {
 import { CountrySwitcher } from "@/app/_components/country-switcher";
 import { CachedCountrySlot, CountrySlot } from "@/app/_components/country-slot";
 import { PrivateComponentCountrySlot } from "@/app/_components/private-cached";
+import { RemoteCachedCountrySlot } from "@/app/_components/remote-cached";
 import { SlotCard } from "@/app/_components/slot-card";
 import { SlotSkeleton, StatusLine } from "@/app/_components/slot-body";
 import { getCatalog } from "@/lib/catalog";
@@ -74,7 +75,7 @@ export default function PprDemo() {
           What&apos;s in the shell, what streams in
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-          Seven slots on one page. Each card&apos;s frame, title and notes are
+          Eight slots on one page. Each card&apos;s frame, title and notes are
           prerendered — only the region inside it can stream. Every slot reports{" "}
           <span className="font-mono text-ink">rendered @Nms</span>: when that
           content actually reached the screen.
@@ -92,6 +93,7 @@ export default function PprDemo() {
                 "Private",
                 "cached in your browser, not the server",
               ],
+              ["bg-teal-500", "Remote", "cached in a shared store, not memory"],
             ] as const
           ).map(([dot, term, desc]) => (
             <div key={term} className="flex items-baseline gap-2">
@@ -247,6 +249,14 @@ export default function PprDemo() {
                   On a hit the lookup reports 0ms — but the 400ms render is
                   still paid, because the component itself re-runs.
                 </p>
+                <p>
+                  If you arrived by clicking from the index, this card&apos;s
+                  badge may read the same as the red one. That is the client
+                  revealing both slots together once the prefetched shell has
+                  committed — not a cache miss. The status line above is the
+                  server-side truth, and a hard reload shows the difference
+                  plainly.
+                </p>
               </>
             }
           >
@@ -299,12 +309,11 @@ export default function PprDemo() {
         <div id="private-heading">
           <SectionHeading
             eyebrow="Group 3"
-            title="Cached in your browser — no loading on navigation"
+            title="Where else the cache can live"
           >
-            The red slot from group 2, unchanged except for one directive. Click{" "}
-            <span className="font-mono">← all demos</span> and come back: this
-            one is already there, while the red slot above shows its skeleton
-            again. A full reload clears browser memory, so it is slow again.
+            Group 2&apos;s slots again, each with one directive changed to move
+            the cache somewhere other than this server&apos;s memory — into the
+            browser, or into a shared remote store.
           </SectionHeading>
         </div>
 
@@ -346,6 +355,47 @@ export default function PprDemo() {
               }
             >
               <PrivateComponentCountrySlot />
+            </Suspense>
+          </SlotCard>
+
+          <SlotCard
+            variant="remote"
+            title="use cache: remote, on the component"
+            summary="The violet slot, with its entry moved to a shared store."
+            snippetId="remote-component"
+            description={
+              <>
+                <p>
+                  Byte-for-byte the violet slot in group 2, with one directive
+                  changed. It still cannot read{" "}
+                  <code className="font-mono">cookies()</code> — remote carries
+                  the same restriction as plain{" "}
+                  <code className="font-mono">use cache</code> — so the country
+                  code still arrives as a prop from an uncached wrapper.
+                </p>
+                <p>
+                  What moves is <em>where the entry lives</em>. Plain{" "}
+                  <code className="font-mono">use cache</code> is in-memory: one
+                  server instance, gone on restart or eviction. A remote handler
+                  is shared by every instance, so a hit does not depend on
+                  reaching the machine that computed it — which is why it is the
+                  reliable choice on serverless, where the in-memory variant
+                  misses constantly.
+                </p>
+                <p>
+                  The trade is a network round trip on every lookup, plus
+                  storage cost. Entries do not survive a deploy either: the
+                  build id is part of the cache key.
+                </p>
+              </>
+            }
+          >
+            <Suspense
+              fallback={
+                <SlotSkeleton testId="remote-component-skeleton" tint="teal" />
+              }
+            >
+              <RemoteCachedCountrySlot />
             </Suspense>
           </SlotCard>
         </div>

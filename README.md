@@ -13,6 +13,8 @@ shell versus what it streams in at request time.
 - **Sky dashed outline** — `use cache: private`, cached in **your browser**
   rather than on the server. Navigate away and back and it shows no loading
   state at all.
+- **Teal dashed outline** — `use cache: remote`, cached in a **shared store**
+  rather than this instance's memory.
 
 Every card has two toggles — **what this shows** (the explanation) and **show
 code** (the lines that make it behave that way, highlighted by Shiki on the
@@ -245,6 +247,65 @@ catalog's frozen timestamp while the country panel's stays put, and
 The one thing it cannot reach is the sky `use cache: private` slot — that
 lives in the browser, so only a reload clears it.
 
+## Why the badges can read the same on a client navigation
+
+Two separate things make the amber (data cached) slot look no faster than the
+red (uncached) one when you arrive from the index. Only the first was a bug.
+
+**0. Badges used to show a reading from the previous visit — fixed.**
+Badges stamped once per DOM node, which is right within one navigation but
+wrong across them: React keeps the previous route mounted rather than
+unmounting it (Cache Components preserves routes via `<Activity>`), so
+navigating back reuses the very same nodes, already stamped. Nothing was being
+cached — the node simply still carried its old value. The stamp is now keyed to
+the navigation, so it re-stamps on a new one and still stamps only once within
+one.
+
+**1. The clock used to start in the wrong place — fixed.**
+`performance.now()` measures from the *document* load, and a soft navigation
+creates no new document. So every badge on `/ppr` was reporting "time since you
+loaded the index", inflating all of them by the same constant and flattening
+the differences. Measured: DOM insertion at 59 / 428 / 2026ms while the badges
+read 666 / 1045 / 2644ms — a uniform +617ms, exactly the time spent on the
+index. Badges now measure from the navigation itself (`nav-clock.tsx`).
+
+**2. With a settled prefetch, the client reveals the slots together — not a
+bug, and not a cache miss.** Once the prefetched shell has committed, the
+remaining boundaries are revealed as a group, so the amber slot waits for the
+red one before appearing.
+
+That second one is worth proving rather than believing, because the badge
+genuinely does say ~2400ms for both. The server disagrees:
+
+```
+# RSC flush timing, measured on the wire
+  113ms  component-country-slot
+  494ms  cached-country-slot     <- ready in 494ms
+ 2094ms  country-slot
+```
+```
+# server trace for the same navigation
+G2 data      loadCachedCountryOffer  cached-hit  code=US 1ms
+shared data  simulateRenderWork      RAN         400ms
+G2 component CachedCountrySlot       rendered    code=US render=400ms
+shared data  fetchCountryOffer       RAN         code=US      <- the red slot's 2000ms
+```
+
+The cache hit at 1ms. The amber slot was finished at ~400ms and flushed at
+494ms. It then sat in the browser until the red slot caught up at ~2.4s.
+
+So the badge is not lying — it reports when content hit the screen, and on that
+navigation the screen arrival was gated by the slowest sibling. It just is not
+a measure of caching. To see the caching:
+
+- **Hard-load `/ppr` directly** (or reload). The badges then differ as expected.
+- **Read the amber slot's own status line**: `cache HIT lookup 1ms · render
+  still 400ms` is the server-side truth regardless of when the card appeared.
+- **Watch the server trace** (below).
+
+Checked and ruled out: `export const instant = false` on the route makes no
+difference to this — the reveal behaves identically with and without it.
+
 ## Watching the cache work (server trace)
 
 Every slot logs at two layers — the component and the data it reads. **The
@@ -292,6 +353,41 @@ Read it slot by slot:
 the 2000ms was really spent. Grep for it.
 
 Set `CACHE_TRACE=0` to silence the whole thing.
+
+## `use cache: remote` (group 3)
+
+The violet component-cached slot with exactly one line changed — the
+directive. It still cannot read `cookies()` (remote carries the same
+restriction as plain `use cache`), so the country code still arrives as a prop
+from an uncached wrapper.
+
+What moves is *where the entry lives*:
+
+| | `use cache` | `use cache: remote` |
+| --- | --- | --- |
+| Storage | this instance's memory | shared remote handler |
+| Survives a restart | no | yes |
+| Shared across instances | no | yes |
+| Cost | none | network round trip + storage |
+| Survives a deploy | no | no — the build id is in the cache key |
+
+That matters most on serverless, where each instance has its own memory and the
+in-memory variant misses constantly. Locally it works with no `cacheHandlers`
+config; hosts normally provide the handler.
+
+Verified from the server trace — cold, then warm:
+
+```
+G3 component RemoteCachedCountrySlot  requested  wrapper (uncached)
+G3 component RemoteCountryPanel       RAN        code=US      <- miss
+```
+```
+G3 component RemoteCachedCountrySlot  requested  wrapper (uncached)
+                                                              <- hit: nothing ran
+```
+
+On a client navigation it commits with the shell (`rendered @24ms`), alongside
+the component-cached and private slots.
 
 ## Where the country comes from
 

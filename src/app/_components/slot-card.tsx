@@ -3,7 +3,7 @@ import { highlight } from "@/lib/highlight";
 import { SNIPPETS, type SnippetId } from "@/lib/snippets";
 
 export type SlotVariant =
-  "static" | "uncached" | "data-cached" | "component" | "private";
+  "static" | "uncached" | "data-cached" | "component" | "private" | "remote";
 
 /**
  * Colour encodes the caching strategy — but it is never the only cue: every
@@ -35,13 +35,19 @@ const VARIANTS = {
     chip: "bg-violet-600 text-white dark:bg-violet-500 dark:text-violet-950",
     rail: "bg-violet-500",
   },
-  // Sky — cached in the browser rather than on the server. One colour for the
-  // whole private group; the card title says whether it is data or component.
+  // Sky — cached in the browser rather than on the server.
   private: {
     label: "PRIVATE · BROWSER",
     frame: "border-sky-500/60",
     chip: "bg-sky-600 text-white dark:bg-sky-500 dark:text-sky-950",
     rail: "bg-sky-500",
+  },
+  // Teal — cached in a shared remote store rather than this instance's memory.
+  remote: {
+    label: "REMOTE · SHARED",
+    frame: "border-teal-500/60",
+    chip: "bg-teal-600 text-white dark:bg-teal-500 dark:text-teal-950",
+    rail: "bg-teal-500",
   },
 } satisfies Record<
   SlotVariant,

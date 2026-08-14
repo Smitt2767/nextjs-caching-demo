@@ -14,6 +14,7 @@ export type SnippetId =
   | "country-cached"
   | "country-component"
   | "private-component"
+  | "remote-component"
   | "timing";
 
 export type Snippet = {
@@ -37,14 +38,18 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
         id={domId}
         suppressHydrationWarning
         ref={(node) => {
-          // Path 2 — client-side updates, after hydration is done.
-          // Scripts React creates client-side never execute, so this
-          // covers re-renders (switching country, navigating back).
-          if (node && !node.dataset.renderedAt) {
-            const ms = Math.round(performance.now())
-            node.dataset.renderedAt = String(ms)
-            node.textContent = \`rendered @\${ms}ms\`
-          }
+          if (!node) return
+          // Path 2 — soft navigations and client-side re-renders.
+          // Stamped once per NAVIGATION, not once per node: React keeps
+          // the previous route mounted and reuses these nodes, so a
+          // node-only guard left a stale reading on screen.
+          const nav = currentNavigationId()
+          if (node.dataset.navId === nav) return
+
+          node.dataset.navId = nav
+          const ms = msSinceNavigationStart()   // not performance.now():
+          node.dataset.renderedAt = String(ms)  // a soft nav has no new
+          node.textContent = \`rendered @\${ms}ms\` // document clock
         }}
       >
         rendered @…
@@ -60,7 +65,7 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
             \`(function(){var n=document.getElementById("\${domId}");\` +
             \`if(n&&!n.dataset.renderedAt){\` +
             \`var t=Math.round(performance.now());\` +
-            \`n.dataset.renderedAt=t;\` +
+            \`n.dataset.renderedAt=t;n.dataset.navId="0";\` +
             \`n.textContent="rendered @"+t+"ms";}})()\`,
         }}
       />
@@ -68,8 +73,8 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
   )
 }
 
-// Whichever fires first wins; data-rendered-at stops the other
-// from overwriting it.`,
+// navId "0" is the document load. The script claims it so the ref
+// cannot overwrite this parse-time reading during hydration.`,
   },
 
   shell: {
@@ -166,6 +171,30 @@ export async function ComponentCachedCountrySlot() {
 }`,
   },
 
+  "remote-component": {
+    file: "src/app/_components/remote-cached.tsx",
+    point: "Identical to the violet slot — one directive moves the storage.",
+    code: `async function RemoteCountryPanel({ code }: { code: CountryCode }) {
+  'use cache: remote'          // <- the only line that differs
+  cacheLife('hours')
+  cacheTag(\`country-remote-\${code}\`)
+
+  const offer = await fetchCountryOffer(code)   // 2000ms
+  const renderMs = await simulateRenderWork()   // 400ms
+  // ...both skipped on a hit, same as 'use cache'
+}
+
+// Still cannot read cookies() — remote has the same restriction as
+// plain 'use cache' — so an uncached wrapper passes the code in:
+export async function RemoteCachedCountrySlot() {
+  const { code } = await resolveCountry()
+  return <RemoteCountryPanel code={code} />
+}
+
+// In-memory  -> one instance, lost on restart or eviction
+// Remote     -> shared by every instance, survives restarts
+//               (but not deploys: the build id is in the cache key)`,
+  },
 
   "private-component": {
     file: "src/app/_components/private-cached.tsx",

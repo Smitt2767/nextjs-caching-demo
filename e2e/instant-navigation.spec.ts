@@ -16,12 +16,15 @@ const CARD_OF: Record<string, string> = {
   "component-cached-catalog": "catalog-component",
   "private-component-slot": "private-component",
   "private-component-skeleton": "private-component",
+  "remote-component-slot": "remote-component",
+  "remote-component-skeleton": "remote-component",
   // Status readouts inside the streamed bodies, duplicated the same way.
   "cached-country-verdict": "country-cached",
   "cached-country-ms": "country-cached",
   "cached-country-render-ms": "country-cached",
   "component-country-rendered-at": "country-component",
   "private-component-rendered-at": "private-component",
+  "remote-component-rendered-at": "remote-component",
 };
 
 /**
@@ -58,6 +61,7 @@ async function expectSlotsArrived(page: Page) {
   await expect(slot(page, "cached-country-slot")).toBeVisible();
   await expect(slot(page, "component-country-slot")).toBeVisible();
   await expect(slot(page, "private-component-slot")).toBeVisible();
+  await expect(slot(page, "remote-component-slot")).toBeVisible();
 }
 
 /**
@@ -190,6 +194,7 @@ test.describe("static wrappers", () => {
     "country-cached",
     "country-component",
     "private-component",
+    "remote-component",
   ];
 
   test("every card and its disclosures are in the static shell", async ({
@@ -258,6 +263,7 @@ test.describe("country slots", () => {
         "cached-country-slot",
         "component-country-slot",
         "private-component-slot",
+        "remote-component-slot",
       ]) {
         const panel = slot(page, testId);
         await expect(panel).toBeVisible();

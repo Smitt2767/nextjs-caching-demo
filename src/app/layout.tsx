@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+import { NavClock } from "@/app/_components/nav-clock";
+
 // Developer-tool pairing: IBM Plex Sans for prose, JetBrains Mono for the
 // timings, tags and code that carry most of this demo's meaning.
 // Loaded via next/font so they self-host with no layout shift.
@@ -30,6 +32,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-surface text-ink">
+        {/* Stamps when each client navigation begins, so the arrival badges
+            measure from the click rather than from the original page load. */}
+        <NavClock />
         {children}
       </body>
     </html>

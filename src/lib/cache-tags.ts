@@ -18,6 +18,8 @@ export const CACHE_TAGS = {
   countryOffer: (code: CountryCode) => `country-offer-${code}` as const,
   /** `CachedCountryPanel` — cached markup, one entry per country. */
   countryPanel: (code: CountryCode) => `country-panel-${code}` as const,
+  /** `RemoteCountryPanel` — same markup, in the remote handler. */
+  countryRemote: (code: CountryCode) => `country-remote-${code}` as const,
 } as const;
 
 export type TagDescriptor = {
@@ -60,6 +62,11 @@ export const COUNTRY_TAGS: { code: CountryCode; tags: TagDescriptor[] }[] =
         tag: CACHE_TAGS.countryPanel(code),
         label: `panel markup · ${code}`,
         effect: `the violet slot re-renders for ${code} only`,
+      },
+      {
+        tag: CACHE_TAGS.countryRemote(code),
+        label: `remote panel · ${code}`,
+        effect: `the remote-cached slot re-renders for ${code} only`,
       },
     ],
   }));
