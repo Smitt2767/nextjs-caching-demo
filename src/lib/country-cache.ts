@@ -1,5 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 
+import { CACHE_TAGS } from "@/lib/cache-tags";
+
 import {
   COUNTRY_FETCH_DELAY_MS,
   fetchCountryOffer,
@@ -20,7 +22,7 @@ export async function getCachedCountryOffer(
 ): Promise<CountryOffer> {
   "use cache";
   cacheLife("hours");
-  cacheTag(`country-offer-${code}`);
+  cacheTag(CACHE_TAGS.countryOffer(code));
 
   return fetchCountryOffer(code);
 }

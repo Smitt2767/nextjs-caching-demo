@@ -347,6 +347,97 @@ test.describe("use cache, keyed by country", () => {
   });
 });
 
+test.describe("invalidation", () => {
+  // These mutate server-wide cache state, so they must not share the server
+  // with anything asserting a cache hit. Serial here, and `workers: 1` in the
+  // config, together mean nothing else is in flight while they run. Each test
+  // also establishes its own baseline first, so it is unaffected by whatever
+  // ran before it.
+  test.describe.configure({ mode: "serial" });
+
+  /** Reads the two frozen timestamps that prove a cache entry was reused. */
+  async function readStamps(page: Page) {
+    await page.goto("/ppr");
+    await expect(slot(page, "component-country-slot")).toBeVisible();
+    const catalog = await page.getByTestId("card-catalog").innerText();
+    return {
+      catalog: catalog.match(/computed once at (\S+)/)?.[1],
+      countryPanel: await slot(
+        page,
+        "component-country-rendered-at",
+      ).textContent(),
+    };
+  }
+
+  async function press(page: Page, testId: string) {
+    await page.goto("/invalidate");
+    await page.getByTestId(testId).click();
+    await expect(page.getByTestId("invalidate-receipt")).toHaveAttribute(
+      "data-ok",
+      "true",
+    );
+  }
+
+  test("updateTag expires one entry and leaves the rest cached", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await context.addCookies([
+      { name: "demo-country", value: "IN", url: baseURL! },
+    ]);
+
+    const before = await readStamps(page);
+    // Nothing moves without an invalidation — otherwise the assertions below
+    // would pass for the wrong reason.
+    expect(await readStamps(page)).toEqual(before);
+
+    await press(page, "invalidate-catalog-data");
+    const after = await readStamps(page);
+
+    expect(after.catalog).not.toBe(before.catalog);
+    // Surgical: the country panel was not named, so it stays cached.
+    expect(after.countryPanel).toBe(before.countryPanel);
+  });
+
+  test("revalidatePath drops everything on the route", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await context.addCookies([
+      { name: "demo-country", value: "IN", url: baseURL! },
+    ]);
+
+    const before = await readStamps(page);
+    await press(page, "invalidate-ppr-path");
+    const after = await readStamps(page);
+
+    expect(after.catalog).not.toBe(before.catalog);
+    expect(after.countryPanel).not.toBe(before.countryPanel);
+  });
+
+  test("rejects a tag that is not on the allowlist", async ({ page }) => {
+    // The Server Action is a public endpoint; it must not expire arbitrary
+    // tags just because a caller asked.
+    await page.goto("/invalidate");
+    const rejected = await page.evaluate(async () => {
+      const form = document.querySelector(
+        '[data-testid="invalidate-catalog-data"]',
+      )!.parentElement as HTMLFormElement;
+      const input = form.querySelector("input[name=tag]") as HTMLInputElement;
+      input.value = "not-a-real-tag";
+      form.requestSubmit();
+      return true;
+    });
+    expect(rejected).toBe(true);
+
+    const receipt = page.getByTestId("invalidate-receipt");
+    await expect(receipt).toHaveAttribute("data-ok", "false");
+    await expect(receipt).toContainText("Unknown tag");
+  });
+});
+
 test.describe("use cache: private", () => {
   // The point of the group: navigating back shows no loading state, because
   // the result is held in the browser. The uncached control beside it does

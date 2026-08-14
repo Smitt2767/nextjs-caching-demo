@@ -2,7 +2,9 @@
 // It takes no runtime input, so `use cache` lets it be computed once and
 // baked into the static shell.
 
-import { cacheLife } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
+
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 export type CatalogEntry = { name: string; blurb: string };
 
@@ -29,6 +31,7 @@ const ENTRIES: CatalogEntry[] = [
 export async function getCatalog(): Promise<Catalog> {
   "use cache";
   cacheLife("hours");
+  cacheTag(CACHE_TAGS.catalogData);
 
   // The expense that caching saves. Paid once, then never again.
   await new Promise((resolve) => setTimeout(resolve, CATALOG_COMPUTE_MS));

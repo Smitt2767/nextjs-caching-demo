@@ -15,6 +15,16 @@ const eslintConfig = defineConfig([
     // The e2e rig's build output (see distDir in next.config.ts).
     ".next-e2e/**",
   ]),
+  {
+    rules: {
+      // Underscore means "required by a signature I don't control" — e.g. the
+      // (prevState, formData) shape useActionState imposes on Server Actions.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

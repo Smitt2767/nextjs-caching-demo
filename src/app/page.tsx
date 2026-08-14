@@ -143,6 +143,37 @@ export default function Home() {
           </li>
         </ul>
       </section>
+
+      <section aria-labelledby="tools-heading">
+        <h2
+          id="tools-heading"
+          className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-subtle"
+        >
+          Tools
+        </h2>
+        <ul className="mt-3 space-y-3">
+          <li>
+            <Link
+              href="/invalidate"
+              data-testid="invalidate-link"
+              className="block rounded-xl border border-line bg-surface-raised p-5 transition-colors hover:border-ink-subtle"
+            >
+              <span className="font-mono text-[11px] font-bold text-ink-subtle">
+                /invalidate
+              </span>
+              <h3 className="mt-1 text-xl font-semibold text-ink">
+                Invalidate caches
+              </h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                Expire a single entry with{" "}
+                <code className="font-mono">updateTag</code>, or the whole route
+                with <code className="font-mono">revalidatePath</code>, then
+                watch which panels pay for their work again.
+              </p>
+            </Link>
+          </li>
+        </ul>
+      </section>
     </main>
   );
 }

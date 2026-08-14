@@ -11,10 +11,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: "list",
-  // `next start` is a single process, and every request to /ppr does seconds
-  // of deliberately slow work across six slots. Too many parallel workers
-  // queue behind each other and turn real waits into spurious timeouts.
-  workers: 2,
+  // One worker, for two reasons. `next start` is a single process and every
+  // request to /ppr does seconds of deliberately slow work, so parallel
+  // workers queue behind each other and turn real waits into spurious
+  // timeouts. And the suite asserts on shared server cache state — an
+  // invalidation running beside a test that expects a cache hit fails it for
+  // the wrong reason.
+  workers: 1,
   expect: { timeout: 15_000 },
   use: {
     baseURL: BASE_URL,

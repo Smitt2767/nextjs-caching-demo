@@ -1,5 +1,7 @@
-import { cacheLife } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { codeToHtml } from "shiki";
+
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 /**
  * Syntax-highlight a snippet on the server.
@@ -18,6 +20,7 @@ export async function highlight(code: string): Promise<string> {
   // build id is part of the cache key. Without this the default 15m profile
   // would drag the whole route's revalidate window down with it.
   cacheLife("max");
+  cacheTag(CACHE_TAGS.snippets);
 
   return codeToHtml(code, {
     lang: "tsx",

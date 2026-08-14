@@ -210,6 +210,41 @@ The costs, straight from the directive's contract:
   runtime prefetching, ≥ 5 minutes to be eligible for the App Shell. This one
   uses 300s.
 
+## Invalidation (`/invalidate`)
+
+A page of buttons for expiring what `/ppr` caches, grouped by route so future
+demos get their own section.
+
+| Tag | Expires |
+| --- | --- |
+| `catalog-data` | `getCatalog()` — the cached data |
+| `catalog-panel` | the component-cached catalog markup |
+| `snippets` | the Shiki-highlighted code excerpts |
+| `country-offer-<CC>` | the amber slot's lookup, one country |
+| `country-panel-<CC>` | the violet slot's markup, one country |
+
+Plus `revalidatePath("/ppr")` for the whole route.
+
+**`updateTag`, not `revalidateTag`.** `updateTag` expires the entry
+immediately, so the next request *waits* for fresh data — which is what you
+want after pressing a button and expecting to see the effect.
+`revalidateTag(tag, 'max')` is the stale-while-revalidate choice: it keeps
+serving the old value until the new one is ready. `updateTag` is also
+Server-Action-only; it throws in a Route Handler.
+
+Tags live in `src/lib/cache-tags.ts` and both the `cacheTag()` call sites and
+this page read from there — previously they were bare strings in two places
+and could drift apart silently. The Server Action validates against that list
+rather than expiring whatever string arrives, since a Server Action is a
+public endpoint.
+
+Verified end to end in the suite: `updateTag("catalog-data")` moves the
+catalog's frozen timestamp while the country panel's stays put, and
+`revalidatePath("/ppr")` moves both.
+
+The one thing it cannot reach is the sky `use cache: private` slot — that
+lives in the browser, so only a reload clears it.
+
 ## Where the country comes from
 
 **Next.js gives us nothing here.** `NextRequest.geo` and `.ip` were removed in

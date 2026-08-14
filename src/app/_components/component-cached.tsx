@@ -1,5 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 
+import { CACHE_TAGS } from "@/lib/cache-tags";
+
 import { OfferBody, StatusLine } from "@/app/_components/slot-body";
 import { getCatalog } from "@/lib/catalog";
 import {
@@ -23,7 +25,7 @@ import { resolveCountry } from "@/lib/geo";
 export async function ComponentCachedCatalog() {
   "use cache";
   cacheLife("hours");
-  cacheTag("catalog-panel");
+  cacheTag(CACHE_TAGS.catalogPanel);
 
   const catalog = await getCatalog();
   const renderMs = await simulateRenderWork();
@@ -69,7 +71,7 @@ export function CatalogList({
 async function CachedCountryPanel({ code }: { code: CountryCode }) {
   "use cache";
   cacheLife("hours");
-  cacheTag(`country-panel-${code}`);
+  cacheTag(CACHE_TAGS.countryPanel(code));
 
   const offer = await fetchCountryOffer(code);
   const renderMs = await simulateRenderWork();
