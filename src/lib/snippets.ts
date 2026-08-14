@@ -13,8 +13,8 @@ export type SnippetId =
   | "country"
   | "country-cached"
   | "country-component"
+  | "private-all"
   | "private-component"
-  | "remote-component"
   | "timing";
 
 export type Snippet = {
@@ -28,53 +28,33 @@ export type Snippet = {
 export const SNIPPETS: Record<SnippetId, Snippet> = {
   timing: {
     file: "src/app/_components/arrival-timer.tsx",
-    point: "Stamped while the browser parses the chunk, before React loads.",
+    point: "An inline script, so each panel is stamped as its markup lands.",
     code: `export function ArrivalTimer({ id }: { id: string }) {
   const domId = \`arrival-\${id}\`
 
   return (
     <>
-      <span
-        id={domId}
-        suppressHydrationWarning
-        ref={(node) => {
-          if (!node) return
-          // Path 2 — soft navigations and client-side re-renders.
-          // Stamped once per NAVIGATION, not once per node: React keeps
-          // the previous route mounted and reuses these nodes, so a
-          // node-only guard left a stale reading on screen.
-          const nav = currentNavigationId()
-          if (node.dataset.navId === nav) return
+      <span id={domId} suppressHydrationWarning>measuring…</span>
 
-          node.dataset.navId = nav
-          const ms = msSinceNavigationStart()   // not performance.now():
-          node.dataset.renderedAt = String(ms)  // a soft nav has no new
-          node.textContent = \`rendered @\${ms}ms\` // document clock
-        }}
-      >
-        rendered @…
-      </span>
-
-      {/* Path 1 — initial load. This runs while the browser is still
-          parsing THIS chunk of the document, so it records the moment
-          the markup arrived. Shell chunks stamp at parse time; a
-          streamed chunk stamps when it lands. */}
+      {/* Runs while the browser is still parsing THIS chunk, so each
+          panel is stamped as its own markup arrives: shell chunks at
+          parse time, a streamed slot when its chunk lands. */}
       <script
         dangerouslySetInnerHTML={{
           __html:
             \`(function(){var n=document.getElementById("\${domId}");\` +
             \`if(n&&!n.dataset.renderedAt){\` +
             \`var t=Math.round(performance.now());\` +
-            \`n.dataset.renderedAt=t;n.dataset.navId="0";\` +
-            \`n.textContent="rendered @"+t+"ms";}})()\`,
+            \`n.dataset.renderedAt=t;n.textContent="~"+t+"ms";}})()\`,
         }}
       />
     </>
   )
 }
 
-// navId "0" is the document load. The script claims it so the ref
-// cannot overwrite this parse-time reading during hydration.`,
+// Not a useEffect: effects all run in one commit after hydration, so
+// every panel already on screen reports the SAME number and the cached
+// slots stop being distinguishable from the static ones.`,
   },
 
   shell: {
@@ -111,7 +91,6 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
   cacheTag('catalog-panel')
 
   const catalog = await getCatalog()
-  const renderMs = await simulateRenderWork()
 
   return <Panel tag="COMPONENT CACHED">{/* ... */}</Panel>
 }`,
@@ -147,8 +126,7 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
 
 // The cookie is read OUTSIDE the cached scope and passed in:
 const { code } = await resolveCountry()
-const { offer } = await loadCachedCountryOffer(code)
-const renderMs = await simulateRenderWork()  // still paid every request`,
+const { offer } = await loadCachedCountryOffer(code)`,
   },
 
   "country-component": {
@@ -160,7 +138,6 @@ const renderMs = await simulateRenderWork()  // still paid every request`,
   cacheTag(\`country-panel-\${code}\`)
 
   const offer = await fetchCountryOffer(code)  // 2000ms
-  const renderMs = await simulateRenderWork()  // 400ms
   return <Panel>{/* ...both skipped on a hit */}</Panel>
 }
 
@@ -171,47 +148,52 @@ export async function ComponentCachedCountrySlot() {
 }`,
   },
 
-  "remote-component": {
-    file: "src/app/_components/remote-cached.tsx",
-    point: "Identical to the violet slot — one directive moves the storage.",
-    code: `async function RemoteCountryPanel({ code }: { code: CountryCode }) {
-  'use cache: remote'          // <- the only line that differs
-  cacheLife('hours')
-  cacheTag(\`country-remote-\${code}\`)
-
-  const offer = await fetchCountryOffer(code)   // 2000ms
-  const renderMs = await simulateRenderWork()   // 400ms
-  // ...both skipped on a hit, same as 'use cache'
-}
-
-// Still cannot read cookies() — remote has the same restriction as
-// plain 'use cache' — so an uncached wrapper passes the code in:
-export async function RemoteCachedCountrySlot() {
-  const { code } = await resolveCountry()
-  return <RemoteCountryPanel code={code} />
-}
-
-// In-memory  -> one instance, lost on restart or eviction
-// Remote     -> shared by every instance, survives restarts
-//               (but not deploys: the build id is in the cache key)`,
-  },
-
-  "private-component": {
+  "private-all": {
     file: "src/app/_components/private-cached.tsx",
-    point: "Held in the browser, so navigating back shows no loading state.",
-    code: `export async function PrivateComponentCountrySlot() {
+    point: "One private scope around everything — including the costly half.",
+    code: `export async function PrivateEverythingCountrySlot() {
   'use cache: private'
-  cacheLife({ stale: 300 })   // >= 5min to be eligible for the App Shell
+  cacheLife({ stale: 300 })
 
-  // Reads cookies() from INSIDE the cached scope — plain 'use cache' cannot.
-  // So there is no uncached wrapper and no \`code\` prop: it resolves itself.
+  // Reads cookies() inside the cached scope — only 'private' allows this.
   const raw = (await cookies()).get(COUNTRY_COOKIE)?.value
   const code = isCountryCode(raw) ? raw : DEFAULT_COUNTRY
 
   const offer = await fetchCountryOffer(code)   // 2000ms
-  const renderMs = await simulateRenderWork()   // 400ms
-  // ...cached in browser memory: navigate away and back and it is instant.
-  // Never stored on the server, so a full reload always pays again.
-}`,
+}
+
+// Works, and a client navigation reuses all of it. But NOTHING here is
+// stored on the server, so the 2000ms runs again on every server render
+// and is cached per visitor -- no two users share any of it.`,
+  },
+
+  "private-component": {
+    file: "src/app/_components/private-cached.tsx",
+    point: "Private wraps only the cookie read. The costly half stays shared.",
+    code: `// The wrapper is private, because what it does is per-user.
+export async function PrivateComponentCountrySlot() {
+  'use cache: private'
+  cacheLife({ stale: 300 })   // >= 5min to be eligible for the App Shell
+
+  // Allowed here and nowhere else: 'use cache' and 'use cache: remote'
+  // both forbid reading cookies inside the cached scope. In group 2 this
+  // read sits OUTSIDE the cache and re-runs on every request.
+  const { code } = await resolveCountry()
+
+  // ...and the expensive half is the SAME plain 'use cache' component
+  // group 2 renders -- server-side, shared by every user.
+  return <CachedCountryPanel code={code} />
+}
+
+async function CachedCountryPanel({ code }: { code: CountryCode }) {
+  'use cache'                                  // unchanged
+  cacheLife('hours')
+  cacheTag(\`country-panel-\${code}\`)
+
+  const offer = await fetchCountryOffer(code)  // 2000ms
+}
+
+// private   -> per-user, browser-held, cheap  (the cookie read)
+// use cache -> shared, server-held, costly    (the lookup and render)`,
   },
 };

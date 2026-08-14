@@ -3,7 +3,7 @@ import { highlight } from "@/lib/highlight";
 import { SNIPPETS, type SnippetId } from "@/lib/snippets";
 
 export type SlotVariant =
-  "static" | "uncached" | "data-cached" | "component" | "private" | "remote";
+  "static" | "uncached" | "data-cached" | "component" | "private";
 
 /**
  * Colour encodes the caching strategy — but it is never the only cue: every
@@ -41,13 +41,6 @@ const VARIANTS = {
     frame: "border-sky-500/60",
     chip: "bg-sky-600 text-white dark:bg-sky-500 dark:text-sky-950",
     rail: "bg-sky-500",
-  },
-  // Teal — cached in a shared remote store rather than this instance's memory.
-  remote: {
-    label: "REMOTE · SHARED",
-    frame: "border-teal-500/60",
-    chip: "bg-teal-600 text-white dark:bg-teal-500 dark:text-teal-950",
-    rail: "bg-teal-500",
   },
 } satisfies Record<
   SlotVariant,

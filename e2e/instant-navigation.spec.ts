@@ -14,17 +14,16 @@ const CARD_OF: Record<string, string> = {
   "component-country-skeleton": "country-component",
   "cached-catalog": "catalog",
   "component-cached-catalog": "catalog-component",
+  "private-all-slot": "private-all",
+  "private-all-skeleton": "private-all",
   "private-component-slot": "private-component",
   "private-component-skeleton": "private-component",
-  "remote-component-slot": "remote-component",
-  "remote-component-skeleton": "remote-component",
   // Status readouts inside the streamed bodies, duplicated the same way.
   "cached-country-verdict": "country-cached",
   "cached-country-ms": "country-cached",
-  "cached-country-render-ms": "country-cached",
   "component-country-rendered-at": "country-component",
+  "private-all-rendered-at": "private-all",
   "private-component-rendered-at": "private-component",
-  "remote-component-rendered-at": "remote-component",
 };
 
 /**
@@ -48,11 +47,12 @@ async function expectStaticShell(page: Page) {
   await expect(slot(page, "cached-catalog")).toBeVisible();
   await expect(slot(page, "component-cached-catalog")).toBeVisible();
 
+  // Only the uncached slot is guaranteed to still be loading. The cached ones
+  // resolve as fast as their cache allows, and on a warm cache that is fast
+  // enough to ride along in the prefetched shell — so asserting a skeleton for
+  // them here would depend on cache state rather than on the shell.
   await expect(slot(page, "country-skeleton")).toBeVisible();
-  await expect(slot(page, "cached-country-skeleton")).toBeVisible();
-
   await expect(slot(page, "country-slot")).toHaveCount(0);
-  await expect(slot(page, "cached-country-slot")).toHaveCount(0);
 }
 
 /** Every dynamic slot arrived once the lock released. */
@@ -60,8 +60,8 @@ async function expectSlotsArrived(page: Page) {
   await expect(slot(page, "country-slot")).toBeVisible();
   await expect(slot(page, "cached-country-slot")).toBeVisible();
   await expect(slot(page, "component-country-slot")).toBeVisible();
+  await expect(slot(page, "private-all-slot")).toBeVisible();
   await expect(slot(page, "private-component-slot")).toBeVisible();
-  await expect(slot(page, "remote-component-slot")).toBeVisible();
 }
 
 /**
@@ -110,10 +110,17 @@ test.describe("instant nav: /ppr", () => {
       async () => {
         await page.goto("/ppr");
         await expectStaticShell(page);
-        // On a cold document the component-cached panel still streams: the
-        // cookie has to be read before its cache key is known.
-        await expect(slot(page, "component-country-skeleton")).toBeVisible();
-        await expect(slot(page, "component-country-slot")).toHaveCount(0);
+        // On a document request the lock gates every dynamic slot, however
+        // warm its cache is: none of them are part of the static shell.
+        for (const id of [
+          "cached-country",
+          "component-country",
+          "private-all",
+          "private-component",
+        ]) {
+          await expect(slot(page, `${id}-skeleton`)).toBeVisible();
+          await expect(slot(page, `${id}-slot`)).toHaveCount(0);
+        }
       },
       { baseURL },
     );
@@ -139,12 +146,12 @@ test.describe("instant nav: /ppr", () => {
       await page.waitForURL((url) => url.pathname === "/ppr");
       await expectStaticShell(page);
 
-      // The payoff of caching the component rather than its data: the panel
-      // resolved during prefetch, so it commits WITH the shell instead of
-      // streaming in afterwards. The two shells genuinely differ here — on an
-      // initial load this same panel is still a skeleton.
+      // The payoff of caching: these resolved during prefetch, so they commit
+      // WITH the shell instead of streaming in afterwards. The two shells
+      // genuinely differ here — on an initial load these are still skeletons.
       await expect(slot(page, "component-country-slot")).toBeVisible();
       await expect(slot(page, "component-country-skeleton")).toHaveCount(0);
+      await expect(slot(page, "private-component-slot")).toBeVisible();
     });
 
     await expectSlotsArrived(page);
@@ -175,7 +182,9 @@ test.describe("index", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(explainer.locator(".shiki:visible")).toHaveCount(1);
     // The measurement it documents: the inline script, not an effect.
-    await expect(explainer.locator(".shiki")).toContainText("performance.now()");
+    await expect(explainer.locator(".shiki")).toContainText(
+      "performance.now()",
+    );
 
     await toggle.click();
     await expect(explainer.locator(".shiki:visible")).toHaveCount(0);
@@ -193,8 +202,8 @@ test.describe("static wrappers", () => {
     "country",
     "country-cached",
     "country-component",
+    "private-all",
     "private-component",
-    "remote-component",
   ];
 
   test("every card and its disclosures are in the static shell", async ({
@@ -262,8 +271,8 @@ test.describe("country slots", () => {
         "country-slot",
         "cached-country-slot",
         "component-country-slot",
+        "private-all-slot",
         "private-component-slot",
-        "remote-component-slot",
       ]) {
         const panel = slot(page, testId);
         await expect(panel).toBeVisible();
@@ -297,13 +306,9 @@ test.describe("use cache, keyed by country", () => {
     );
     expect(winner).toBe("data-cached");
 
-    await expect(slot(page, "cached-country-verdict")).toHaveText(
-      "cache HIT",
-    );
+    await expect(slot(page, "cached-country-verdict")).toHaveText("cache HIT");
     // A hit skips the 2000ms lookup entirely: two digits of ms at most.
-    await expect(slot(page, "cached-country-ms")).toHaveText(
-      /^\d{1,2}ms$/,
-    );
+    await expect(slot(page, "cached-country-ms")).toHaveText(/^\d{1,2}ms$/);
 
     // And the uncached slot still pays full price on that same request.
     await expect(slot(page, "country-slot")).toBeVisible();
@@ -344,12 +349,7 @@ test.describe("use cache, keyed by country", () => {
 
     // Meanwhile the data-cached slot got its data free but still re-rendered.
     await expect(slot(page, "cached-country-slot")).toBeVisible();
-    await expect(slot(page, "cached-country-ms")).toHaveText(
-      /^\d{1,2}ms$/,
-    );
-    await expect(slot(page, "cached-country-render-ms")).toHaveText(
-      /^\d{3,}ms$/,
-    );
+    await expect(slot(page, "cached-country-ms")).toHaveText(/^\d{1,2}ms$/);
   });
 });
 
@@ -484,8 +484,6 @@ test.describe("use cache: private", () => {
       // Group 2's red slot is the identical component without the directive,
       // and it does show a loading state on this same navigation.
       await expect(slot(page, "country-skeleton")).toBeVisible();
-      // As does the data-cached one: its 400ms render still has to run.
-      await expect(slot(page, "cached-country-skeleton")).toBeVisible();
     });
   });
 
@@ -502,26 +500,39 @@ test.describe("use cache: private", () => {
     ]);
 
     await page.goto("/ppr");
-    await expect(slot(page, "private-component-slot")).toBeVisible();
-    const firstRender = await slot(
+    await expect(slot(page, "private-all-slot")).toBeVisible();
+    const allPrivate = await slot(
+      page,
+      "private-all-rendered-at",
+    ).textContent();
+    const wrapped = await slot(
       page,
       "private-component-rendered-at",
     ).textContent();
-    const serverCachedRender = await slot(
+    const serverCached = await slot(
       page,
       "component-country-rendered-at",
     ).textContent();
 
     await page.reload();
-    await expect(slot(page, "private-component-slot")).toBeVisible();
+    await expect(slot(page, "private-all-slot")).toBeVisible();
 
-    // A reload clears browser memory, so the private timestamp MUST move...
-    await expect(slot(page, "private-component-rendered-at")).not.toHaveText(
-      firstRender!,
+    // The all-private slot keeps nothing on the server, and a reload clears
+    // browser memory, so its timestamp MUST move.
+    await expect(slot(page, "private-all-rendered-at")).not.toHaveText(
+      allPrivate!,
     );
-    // ...while the server-cached one, on the same page, stays frozen.
+
+    // The wrapped slot's timestamp comes from the plain `use cache` component
+    // inside it, which IS on the server — so it stays frozen even though the
+    // private wrapper around it re-ran. That difference is the whole point of
+    // splitting the scopes.
+    await expect(slot(page, "private-component-rendered-at")).toHaveText(
+      wrapped!,
+    );
+    // Same for group 2's server-cached slot, for comparison.
     await expect(slot(page, "component-country-rendered-at")).toHaveText(
-      serverCachedRender!,
+      serverCached!,
     );
   });
 
@@ -539,8 +550,8 @@ test.describe("use cache: private", () => {
 
     const panel = slot(page, "private-component-slot");
     await expect(panel).toHaveAttribute("data-country", "IN");
-    await expect(
-      panel.getByTestId("private-component-slot-price"),
-    ).toHaveText("₹1,499 / mo");
+    await expect(panel.getByTestId("private-component-slot-price")).toHaveText(
+      "₹1,499 / mo",
+    );
   });
 });

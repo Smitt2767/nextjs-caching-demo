@@ -2,8 +2,6 @@
 // Everything here is fake data; the point of the demo is *when* it arrives,
 // not what it says.
 
-import { trace } from "@/lib/trace";
-
 export const COUNTRY_CODES = ["IN", "US", "UK"] as const;
 
 export type CountryCode = (typeof COUNTRY_CODES)[number];
@@ -66,34 +64,12 @@ const OFFERS: Record<CountryCode, CountryOffer> = {
 export const COUNTRY_FETCH_DELAY_MS = 2000;
 
 /**
- * Fake cost of rendering a panel once its data is in hand — formatting,
- * currency rules, whatever. This is the cost that *data* caching cannot
- * remove: cache the fetch and you still re-render every request. Only caching
- * the component itself skips it.
- */
-export const RENDER_COST_MS = 400;
-
-/** Returns its own elapsed ms, so components never have to call the impure
- *  `performance.now()` during render. */
-export async function simulateRenderWork(): Promise<number> {
-  trace("shared", "data", "simulateRenderWork", "RAN", `${RENDER_COST_MS}ms`);
-
-  const startedAt = performance.now();
-  await new Promise((resolve) => setTimeout(resolve, RENDER_COST_MS));
-  return Math.round(performance.now() - startedAt);
-}
-
-/**
  * Dummy per-country lookup. Deliberately slow and deliberately NOT cached —
  * this is the request-time work that has to stream in behind <Suspense>.
  */
 export async function fetchCountryOffer(
   code: CountryCode,
 ): Promise<CountryOffer> {
-  // The single clearest signal in the whole trace: if this prints, the 2000ms
-  // was really paid. Callers differ only in whether they let it get here.
-  trace("shared", "data", "fetchCountryOffer", "RAN", `code=${code}`);
-
   await new Promise((resolve) => setTimeout(resolve, COUNTRY_FETCH_DELAY_MS));
   return OFFERS[code];
 }

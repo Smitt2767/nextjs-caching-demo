@@ -1,7 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 
 import { CACHE_TAGS } from "@/lib/cache-tags";
-import { trace } from "@/lib/trace";
 
 import {
   COUNTRY_FETCH_DELAY_MS,
@@ -24,9 +23,6 @@ export async function getCachedCountryOffer(
   "use cache";
   cacheLife("hours");
   cacheTag(CACHE_TAGS.countryOffer(code));
-
-  // Inside the cached scope: only prints on a miss.
-  trace("G2", "data", "getCachedCountryOffer", "RAN", `code=${code}`);
 
   return fetchCountryOffer(code);
 }
@@ -56,13 +52,6 @@ export async function loadCachedCountryOffer(
 
   // Measured from outside the cached scope, so it can report a hit — a timer
   // inside would be cached along with the value it is timing.
-  trace(
-    "G2",
-    "data",
-    "loadCachedCountryOffer",
-    hit ? "cached-hit" : "RAN",
-    `code=${code} ${serverMs}ms`,
-  );
 
   return { offer, serverMs, hit };
 }

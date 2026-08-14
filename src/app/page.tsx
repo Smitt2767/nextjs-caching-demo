@@ -23,16 +23,30 @@ async function TimingExplainer() {
     >
       <div className="p-5">
         <h2 className="text-base font-semibold text-ink">
-          How the{" "}
+          About the{" "}
           <span className="rounded bg-ink px-1.5 py-0.5 font-mono text-[11px] font-bold text-surface-raised">
-            rendered @164ms
+            ~164ms
           </span>{" "}
-          badges are measured
+          badges
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
-          Each badge reports one thing: how many milliseconds after the page
-          started loading that panel actually reached the screen. One number,
-          one meaning, so panels are directly comparable.
+          Each panel shows roughly when its markup arrived, measured in the
+          browser from the start of the page load. They are here so the panels
+          can be <strong>compared with each other</strong> — that is the whole
+          job.
+        </p>
+        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+          They are <strong>not</strong> real performance numbers. Not your
+          server&apos;s response time, not time-to-first-byte, and not what a
+          user would perceive as load time. Treat them as an audit aid for this
+          demo, and use the Performance panel or a Core Web Vitals tool if you
+          need figures that mean something outside it.
+        </p>
+        <p className="mt-2 text-[13px] leading-relaxed text-ink-subtle">
+          Read them on a <strong>fresh page load</strong>. After a client
+          navigation no new document is parsed, so the badges fall back to a
+          clock that started when you first opened the site — reload to get
+          clean numbers.
         </p>
       </div>
 
@@ -43,35 +57,24 @@ async function TimingExplainer() {
       >
         <div className="space-y-3 text-[13px] leading-relaxed text-ink-muted">
           <p>
-            The reading is taken by an inline{" "}
-            <code className="font-mono">&lt;script&gt;</code> sitting directly
-            after each badge. It runs while the browser is still parsing that
-            chunk of the document — before React has loaded — and writes{" "}
-            <code className="font-mono">performance.now()</code> straight into
-            the DOM.
+            An inline <code className="font-mono">&lt;script&gt;</code> sits
+            immediately after each badge. It runs while the browser is still
+            parsing that chunk of the document, so every panel is stamped as its
+            own markup arrives — shell chunks at parse time, a streamed slot
+            when its chunk lands.
           </p>
           <p>
-            <strong className="text-ink">Why not an effect or a ref.</strong>{" "}
-            Both report when <em>React committed</em> the node, and React does
-            not finish hydrating a streamed page until its slowest slot arrives.
-            On the demo page that meant the static shell — the fastest thing
-            there — reported ~2s, slower than everything it was supposed to
-            beat. Parse-time stamping reports what the user actually saw: around
-            100ms for the shell, ~2100ms for an uncached slot.
-          </p>
-          <p>
-            A ref callback still handles the second case: client-side
-            re-renders, like switching country or navigating back. Scripts React
-            creates on the client never execute, and by then hydration is done,
-            so commit time is the correct reading there.{" "}
-            <code className="font-mono">data-rendered-at</code> keeps whichever
-            fires first from being overwritten.
+            <strong className="text-ink">Why not a useEffect.</strong> Effects
+            all run in the same commit once React has hydrated. Every panel
+            already on screen then reports the <em>same</em> number, and the
+            cached slots become indistinguishable from the static ones — which
+            is exactly the difference this page exists to show. The parse-time
+            reading separates them.
           </p>
           <p className="text-ink-subtle">
-            Caveat worth knowing: this measures when the markup arrived and was
-            parsed, which is a hair before the browser paints it. It is a
-            comparison between panels, not a substitute for a Core Web Vitals
-            measurement.
+            It measures when markup arrived and was parsed, a hair before the
+            browser paints it. Good for ranking these panels against each other;
+            not an absolute figure.
           </p>
         </div>
 

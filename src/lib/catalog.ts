@@ -5,7 +5,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 
 import { CACHE_TAGS } from "@/lib/cache-tags";
-import { trace } from "@/lib/trace";
 
 export type CatalogEntry = { name: string; blurb: string };
 
@@ -33,9 +32,6 @@ export async function getCatalog(): Promise<Catalog> {
   "use cache";
   cacheLife("hours");
   cacheTag(CACHE_TAGS.catalogData);
-
-  // Inside the cached scope: only prints on a miss.
-  trace("G1", "data", "getCatalog", "RAN", `${CATALOG_COMPUTE_MS}ms compute`);
 
   // The expense that caching saves. Paid once, then never again.
   await new Promise((resolve) => setTimeout(resolve, CATALOG_COMPUTE_MS));

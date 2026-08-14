@@ -13,8 +13,6 @@ shell versus what it streams in at request time.
 - **Sky dashed outline** — `use cache: private`, cached in **your browser**
   rather than on the server. Navigate away and back and it shows no loading
   state at all.
-- **Teal dashed outline** — `use cache: remote`, cached in a **shared store**
-  rather than this instance's memory.
 
 Every card has two toggles — **what this shows** (the explanation) and **show
 code** (the lines that make it behave that way, highlighted by Shiki on the
@@ -41,21 +39,24 @@ Wrappers land in the first ~15% of the response; slot bodies arrive in the last
 third. A 500ms cut of the stream already contains all six wrappers and all six
 code blocks.
 
-Every panel carries the same badge — `rendered @<n>ms`, meaning *when this
-panel appeared in the browser*, counted from the start of the page load. One
-number with one meaning, so the panels are directly comparable.
+Every panel carries the same badge — `~<n>ms`, roughly when its markup
+arrived, measured in the browser from the start of the page load.
 
-The index page carries a collapsible explanation of this, with the measuring
-code highlighted inline — open `/` and expand **how it works**.
+**These are not real performance numbers.** They exist so the panels can be
+compared with each other — not server response time, not TTFB, not perceived
+load time. Use the Performance panel for figures that mean anything outside
+this demo.
 
-That number is taken by an inline `<script>` sitting right after each badge,
-which runs while the browser is still parsing that chunk of the document —
-before React has loaded. This matters more than it sounds: React does not
-finish hydrating this page until the slowest streamed slot arrives, so a
-`useEffect` or ref reading would report the *static shell* at ~2s and make the
-fastest thing on the page look like the slowest. Parse-time stamping reports
-what the user actually saw. (Client-side updates, like switching country, fall
-back to a ref callback — by then hydration is done and commit time is right.)
+The reading comes from an inline `<script>` right after each badge, which runs
+while the browser is still parsing that chunk — so each panel is stamped as its
+own markup lands. Deliberately not a `useEffect`: effects all run in one commit
+after hydration, so every panel already on screen reports the *same* number and
+the cached slots stop being distinguishable from the static ones.
+
+**Read them on a fresh page load.** After a client navigation no new document
+is parsed, so the badges fall back to a clock that started when the site was
+first opened. Reload for clean numbers. The index explains this behind a
+**how it works** toggle.
 
 ## Run it
 
@@ -86,8 +87,8 @@ looks fine but no button works. If that happens, restart `next dev`.
 | `CACHE HIT` | green dashed | `getCatalog()` in `src/lib/catalog.ts`, marked `"use cache"` with `cacheLife('hours')`. Fakes 600ms of work, then never pays it again. The timestamp in the note is frozen into the cache entry — reload and it doesn't move. |
 | `STREAMED · <CC>` | red | `CountrySlot`, behind `<Suspense>`. Resolves the country, waits a fixed 2000ms, renders per-country content. Its badge appears only once the stream has landed. |
 | `COMPONENT CACHED` | violet dashed | `ComponentCachedCatalog`. Same catalog, but `use cache` sits on the component, so the rendered markup is the cache entry. |
-| `DATA CACHED · <CC> · HIT/MISS` | amber dashed | `CachedCountrySlot`, in its own `<Suspense>`. Identical content and identical 2000ms lookup, but wrapped in `use cache` keyed by country code. The note reports whether this request paid for the lookup — and what the render still cost. |
-| `COMPONENT CACHED · <CC>` | violet dashed | `ComponentCachedCountrySlot`. A hit skips the lookup *and* the 400ms render. Its "rendered once at" timestamp is frozen in the cache entry. |
+| `DATA CACHED · <CC> · HIT/MISS` | amber dashed | `CachedCountrySlot`, in its own `<Suspense>`. Identical content and identical 2000ms lookup, but wrapped in `use cache` keyed by country code. The note reports whether this request paid for the lookup. |
+| `COMPONENT CACHED · <CC>` | violet dashed | `ComponentCachedCountrySlot`. A hit replays the cached markup, so nothing inside runs again. Its "rendered once at" timestamp is frozen in the cache entry. |
 
 The three country slots are the comparison: same data, same costs, three
 caching strategies. All three still stream — they read the cookie at request
@@ -95,122 +96,85 @@ time — but only the uncached one waits 2s on every request.
 
 ## Caching data vs. caching the component
 
-Each country slot pays two costs: a **2000ms lookup** and a **400ms render**
-(`simulateRenderWork`, standing in for formatting, currency rules, and so on).
-Where you put `use cache` decides which of them you keep paying:
+Where you put `use cache` decides what a hit actually skips:
 
 | Slot | Lookup on a hit | Render on a hit |
 | --- | --- | --- |
-| Red — uncached | 2000ms, always | 400ms, always |
-| Amber — `use cache` on the data | skipped | **400ms, always** |
+| Red — uncached | 2000ms, always | always |
+| Amber — `use cache` on the data | skipped | component still re-runs |
 | Violet — `use cache` on the component | skipped | skipped |
 
 Caching the data caches a *value*; caching the component caches the *rendered
 markup*, so nothing inside it runs again. The violet panel proves it: its
-"rendered once at" timestamp doesn't move between requests, because the render
-that produced it never happens twice.
+"rendered once at" timestamp does not move between requests.
 
-The trade is granularity. A cached component is opaque — you can't time a hit
+The trade is granularity. A cached component is opaque — you cannot time a hit
 from inside it (the timing would be cached too), and everything it renders
-shares one cache entry and one lifetime. Cache data when parts of the panel
-must stay live; cache the component when the whole thing can be frozen.
+shares one entry and one lifetime. Cache data when part of the panel must stay
+live; cache the component when the whole thing can be frozen.
 
-While it's still in flight the third panel shows its Suspense fallback —
-`STREAMING…` / `waiting ~2000ms` — which ships *inside* the static shell, so
-even the skeleton paints immediately.
-
-The build output tells the same story:
-
-```
-Route (app)      Revalidate  Expire
-┌ ○ /
-└ ◐ /ppr                 1h      1d
-
-○  (Static)             prerendered as static content
-◐  (Partial Prerender)  prerendered as static HTML with dynamic server-streamed content
-```
-
-### The two shells are not the same
-
-A route is reached two ways, and they don't commit the same UI:
-
-| Panel | Initial load (`/ppr` directly) | Soft nav (click from `/`) |
-| --- | --- | --- |
-| Shell, both catalogs | in the shell | in the shell |
-| Red, amber country slots | skeleton, then stream | skeleton, then stream |
-| **Violet component-cached slot** | **skeleton, then streams** | **already resolved** |
-
-That last row is the sharpest argument for caching the component. On a soft
-navigation the panel resolves during **prefetch**, so it commits together with
-the shell and never streams at all — the click has no waiting in it. The
-data-cached panel can't do that: its 400ms render still has to happen after the
-click.
-
-Both rows are asserted in the e2e suite, so if that behavior ever changes the
-tests say so.
 
 ## Performance audit
 
-Measured against `next build && next start` on a freshly started server, so the
-first request per country is a genuine cold cache. Times are when each slot
-appeared in the browser, from the start of the page load.
+Warm caches, measured on a **reload** of `/ppr`:
 
-| Country | Request | Red (uncached) | Amber (data cached) | Violet (component cached) |
-| --- | --- | --- | --- | --- |
-| IN | 1st (cold) | 2869ms | 2869ms | 2870ms |
-| IN | 2nd (warm) | 2364ms | 858ms | **110ms** |
-| US | 1st (cold) | 2360ms | 2862ms | 2862ms |
-| US | 2nd (warm) | 2363ms | 858ms | **103ms** |
+| Panel | Badge |
+| --- | --- |
+| Static shell, both catalogs | `~105ms` |
+| Red — uncached | `~2331ms` |
+| Amber — `use cache` on the data | `~105ms` |
+| Violet — `use cache` on the component | `~105ms` |
+| Sky — private around **everything** | `~2031ms` |
+| Sky — private on the **wrapper** only | `~105ms` |
 
 Reading it:
 
-- The uncached slot costs ~2360ms on **every** request. Caching changes nothing
-  for it, because there is no cache.
-- Caching the data gets it to ~858ms: the 2000ms lookup is gone, but the 400ms
-  render is still paid, every request.
-- Caching the component gets it to ~105ms — a **~22× improvement** over
-  uncached, and close enough to the shell's own paint that it may as well be
-  part of it.
-- Every strategy pays full price once per country. The cache is keyed by
+- The uncached slot pays its 2000ms on **every** request. Nothing changes for
+  it, because there is no cache.
+- Both server-cached slots arrive with the shell.
+- **The all-private slot stays slow.** Nothing it computes is stored on the
+  server, so the 2000ms lookup runs again on every server render. That is the
+  cost of putting the whole slot in a private scope.
+- **The wrapped one is fast**, because the expensive half is a plain
+  `use cache` component underneath. Same directive, different placement — and
+  a ~20× difference between the two group 3 cards.
+- Every strategy pays full price once per country: the caches are keyed by
   country code, so warming `IN` does nothing for `US`.
-- Confirmed on the server side: on a warm hit the amber panel reports
-  `lookup 0ms` but `render 400ms`, while the violet panel's "rendered once at"
-  timestamp is byte-identical across requests.
 
-Re-run it yourself with `pnpm test:e2e` — the ordering claim is a test, not
-just a table (see below).
+Amber and violet land together now. With no artificial render cost in the
+components, a data-cache hit and a component-cache hit finish at about the same
+time; what differs is *what* was skipped (a value vs. the rendered markup),
+which the frozen "rendered once at" timestamp shows rather than the clock.
 
 ## `use cache: private` (group 3)
 
-One slot: group 2's uncached red slot, with `use cache: private` applied
-directly to the component and nothing else changed. It buys two things plain
-`use cache` cannot:
+Two shapes of the same directive, side by side.
 
-1. It reads `cookies()` **from inside** the cached scope, so it needs no
-   uncached wrapper and no `code` prop — it resolves its own country.
-2. The result is held in the browser, so a client navigation reuses it with
-   **no loading state**.
+**First card — one private scope around everything.** The cookie read, the
+lookup and the render all sit inside `use cache: private`. It works, and a
+client navigation reuses all of it. But nothing reaches a server cache: the
+2000ms lookup runs again on every server render, and what is cached is cached
+per visitor, so no two users share any of it.
 
-Measured under the `instant()` lock, navigating `/ppr → / → /ppr`:
+**Second card — private on the wrapper only.** The private scope covers just
+the cookie read; inside it sits `CachedCountryPanel`, the same plain
+`use cache` component group 2 renders. The expensive half stays on the server
+and is shared by every user; only the per-user step is private.
 
-| Slot | Skeleton on the way back? |
-| --- | --- |
-| Red — uncached | **yes**, reloads |
-| Amber — data cached | **yes**, its 400ms render still runs |
-| Violet — component cached | no |
-| **Sky — `use cache: private`** | **no** |
+That split is the point of the directive. Group 2's violet slot has to leave
+its cookie read *uncached*, because plain `use cache` may not touch runtime
+APIs — so every request re-runs it before the cache can even be consulted. A
+private scope may read `cookies()`, so that step gets cached too, in the only
+place it could safely live.
 
-The costs, straight from the directive's contract:
+Confirmed in the suite: after a reload the first card's timestamp moves (its
+browser-held cache is gone), while the second card's stays frozen — because the
+`use cache` component inside it is still a server-side hit.
 
-- **Nothing is stored on the server.** The function runs in full on every
-  server render — verified: it reports ~2000ms on every load, while the
-  server-cached slot beside it drops to 1ms.
-- **Browser memory does not survive a reload.** Its "rendered once at"
-  timestamp moves on every refresh, while the server-cached component's stays
-  frozen. Both are asserted in the suite.
-- It is excluded from static shell generation, and needs `stale` ≥ 30s for
-  runtime prefetching, ≥ 5 minutes to be eligible for the App Shell. This one
-  uses 300s.
+`use cache: remote` is deliberately not demonstrated: from this page's point of
+view it behaves exactly like `use cache`, differing only in where the entry is
+stored (a shared handler rather than this instance's memory).
+
 
 ## Invalidation (`/invalidate`)
 
@@ -306,88 +270,6 @@ a measure of caching. To see the caching:
 Checked and ruled out: `export const instant = false` on the route makes no
 difference to this — the reveal behaves identically with and without it.
 
-## Watching the cache work (server trace)
-
-Every slot logs at two layers — the component and the data it reads. **The
-output goes to the terminal running `next dev` / `next start`, not the browser
-console**, because these are Server Components.
-
-That placement is what makes it useful. Code inside a `"use cache"` scope only
-runs on a **miss**, so its line only prints when the cache did not serve the
-request. Uncached callers print unconditionally:
-
-```
-requested + RAN   ->  cache miss, the work actually happened
-requested only    ->  cache hit, the work was skipped
-```
-
-A warm request to `/ppr` reads like this (colour and padding stripped):
-
-```
-G1     component  CachedCatalog                requested   data cached
-G2     component  CountrySlot                  requested   no cache
-G2     component  CachedCountrySlot            requested   data cached
-G2     component  ComponentCachedCountrySlot   requested   wrapper (uncached)
-G3     component  PrivateComponentCountrySlot  RAN         server render (never server-cached)
-shared data       fetchCountryOffer            RAN         code=IN
-G2     data       loadCachedCountryOffer       cached-hit  code=IN 0ms
-shared data       simulateRenderWork           RAN         400ms
-G2     component  CachedCountrySlot            rendered    code=IN render=400ms
-```
-
-Read it slot by slot:
-
-- **G1 catalog** — `CachedCatalog requested` with no `getCatalog RAN`: the data
-  cache served it.
-- **G1 component-cached catalog** — no line at all. The whole function was
-  skipped, which is precisely what caching a component means.
-- **G2 uncached** — `fetchCountryOffer RAN`: paid the 2000ms again.
-- **G2 data cached** — `cached-hit 0ms` for the lookup, but `simulateRenderWork
-  RAN` right after. The fetch was free; the render was not.
-- **G2 component cached** — the wrapper prints, `CachedCountryPanel` does not.
-  Both fetch and render were skipped.
-- **G3 private** — always `RAN`, because private results are never stored on
-  the server. Its payoff is on the client, not here.
-
-`fetchCountryOffer RAN` is the single clearest line in the trace: if it prints,
-the 2000ms was really spent. Grep for it.
-
-Set `CACHE_TRACE=0` to silence the whole thing.
-
-## `use cache: remote` (group 3)
-
-The violet component-cached slot with exactly one line changed — the
-directive. It still cannot read `cookies()` (remote carries the same
-restriction as plain `use cache`), so the country code still arrives as a prop
-from an uncached wrapper.
-
-What moves is *where the entry lives*:
-
-| | `use cache` | `use cache: remote` |
-| --- | --- | --- |
-| Storage | this instance's memory | shared remote handler |
-| Survives a restart | no | yes |
-| Shared across instances | no | yes |
-| Cost | none | network round trip + storage |
-| Survives a deploy | no | no — the build id is in the cache key |
-
-That matters most on serverless, where each instance has its own memory and the
-in-memory variant misses constantly. Locally it works with no `cacheHandlers`
-config; hosts normally provide the handler.
-
-Verified from the server trace — cold, then warm:
-
-```
-G3 component RemoteCachedCountrySlot  requested  wrapper (uncached)
-G3 component RemoteCountryPanel       RAN        code=US      <- miss
-```
-```
-G3 component RemoteCachedCountrySlot  requested  wrapper (uncached)
-                                                              <- hit: nothing ran
-```
-
-On a client navigation it commits with the shell (`rendered @24ms`), alongside
-the component-cached and private slots.
 
 ## Where the country comes from
 

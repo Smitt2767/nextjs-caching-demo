@@ -1,69 +1,82 @@
 import { cacheLife } from "next/cache";
 import { cookies } from "next/headers";
 
+import { CachedCountryPanel } from "@/app/_components/component-cached";
 import { OfferBody, StatusLine } from "@/app/_components/slot-body";
-import { trace } from "@/lib/trace";
 import {
   DEFAULT_COUNTRY,
   fetchCountryOffer,
   isCountryCode,
-  simulateRenderWork,
 } from "@/lib/countries";
-import { COUNTRY_COOKIE } from "@/lib/geo";
+import { COUNTRY_COOKIE, resolveCountry } from "@/lib/geo";
 
 /**
- * Group 2's uncached slot — same 2000ms lookup, same 400ms render — with
- * `use cache: private` applied directly to the component.
+ * Everything inside one private scope: the cookie read, the 2000ms lookup and
+ * the 400ms render.
  *
- * Two things that buys, neither available to plain `use cache`:
+ * It works, and a client navigation reuses the whole thing with no loading
+ * state. But nothing here is ever stored on the server, so the expensive half
+ * is recomputed on every server render and cached separately for every visitor
+ * — no two users share any of it.
  *
- * 1. It reads `cookies()` from inside the cached scope, so it needs no
- *    uncached wrapper and no `code` prop — it resolves its own country.
- * 2. The result is held in the browser, so navigating away and back reuses it
- *    with no server round trip and **no loading state**. Compare with the red
- *    slot in group 2, which shows its skeleton on every navigation.
- *
- * The cost: nothing is stored on the server, so this runs in full on every
- * server render, and a full page reload (which clears browser memory) pays for
- * it again. `stale: 300` is what makes it eligible for the App Shell — 30s is
- * the minimum for runtime prefetching, 5 minutes for the shell.
+ * Compare with the wrapper below, which keeps the expensive half in a shared
+ * server cache and puts only the per-user step in the private one.
  */
-export async function PrivateComponentCountrySlot() {
+export async function PrivateEverythingCountrySlot() {
   "use cache: private";
   cacheLife({ stale: 300 });
-
-  // Private results are never stored on the server, so this prints on every
-  // server render — unlike the G2 cached component, which goes quiet. What
-  // the browser cache buys shows up on a client navigation, not here.
-  trace(
-    "G3",
-    "component",
-    "PrivateComponentCountrySlot",
-    "RAN",
-    "server render (never server-cached)",
-  );
 
   const raw = (await cookies()).get(COUNTRY_COOKIE)?.value;
   const code = isCountryCode(raw) ? raw : DEFAULT_COUNTRY;
 
   const offer = await fetchCountryOffer(code);
-  const renderMs = await simulateRenderWork();
   const renderedAt = new Date().toISOString();
 
   return (
     <>
       <StatusLine
-        timerId="private-component"
+        timerId="private-all"
         status={
           <>
-            rendered in {renderMs}ms ·{" "}
-            <span data-testid="private-component-rendered-at">
-              {renderedAt}
-            </span>
+            rendered at{" "}
+            <span data-testid="private-all-rendered-at">{renderedAt}</span>
           </>
         }
       />
-      <OfferBody offer={offer} testId="private-component-slot" />
+      <OfferBody offer={offer} testId="private-all-slot" />
     </>
   );
+}
+
+/**
+ * `use cache: private` on the wrapper — the part that reads the cookie.
+ *
+ * This is the pattern the directive is actually for. Group 2's violet slot has
+ * to leave its cookie read *uncached*, because plain `use cache` cannot touch
+ * runtime APIs: every request re-runs `resolveCountry()` before it can even
+ * look up the cache. A private scope may read `cookies()`, so that step gets
+ * cached too — per browser, which is the only place it could safely live,
+ * since the answer differs per user.
+ *
+ * The expensive half stays exactly where it was. `CachedCountryPanel` is the
+ * same plain `use cache` component group 2 renders, unchanged: the 2000ms
+ * lookup and 400ms render are still cached on the server and shared across
+ * every user. Only the cheap, per-user cookie read moved into the private
+ * cache.
+ *
+ * So the split is: private for what is per-user, shared `use cache` for what
+ * is not. Nothing user-specific ends up in a server cache, and nothing
+ * expensive gets duplicated per user.
+ */
+export async function PrivateComponentCountrySlot() {
+  "use cache: private";
+  cacheLife({ stale: 300 });
+
+  // Allowed here, and nowhere else: `use cache` and `use cache: remote` both
+  // forbid reading cookies inside the cached scope.
+
+  const { code } = await resolveCountry();
+
+  // The same `use cache` component group 2 uses — server-side and shared.
+  return <CachedCountryPanel code={code} slot="private-component" />;
 }

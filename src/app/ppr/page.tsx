@@ -9,20 +9,17 @@ import {
 } from "@/app/_components/component-cached";
 import { CountrySwitcher } from "@/app/_components/country-switcher";
 import { CachedCountrySlot, CountrySlot } from "@/app/_components/country-slot";
-import { PrivateComponentCountrySlot } from "@/app/_components/private-cached";
-import { RemoteCachedCountrySlot } from "@/app/_components/remote-cached";
+import {
+  PrivateComponentCountrySlot,
+  PrivateEverythingCountrySlot,
+} from "@/app/_components/private-cached";
 import { SlotCard } from "@/app/_components/slot-card";
 import { SlotSkeleton, StatusLine } from "@/app/_components/slot-body";
 import { getCatalog } from "@/lib/catalog";
-import { trace } from "@/lib/trace";
 
 // Cached with `use cache` and free of request-time input, so it is prerendered
 // straight into the static shell — no <Suspense> needed.
 async function CachedCatalog() {
-  // The component is not cached, only its data — so this prints every request
-  // while `getCatalog RAN` stays quiet on a hit.
-  trace("G1", "component", "CachedCatalog", "requested", "data cached");
-
   const catalog = await getCatalog();
   return (
     <>
@@ -93,7 +90,6 @@ export default function PprDemo() {
                 "Private",
                 "cached in your browser, not the server",
               ],
-              ["bg-teal-500", "Remote", "cached in a shared store, not memory"],
             ] as const
           ).map(([dot, term, desc]) => (
             <div key={term} className="flex items-baseline gap-2">
@@ -309,42 +305,85 @@ export default function PprDemo() {
         <div id="private-heading">
           <SectionHeading
             eyebrow="Group 3"
-            title="Where else the cache can live"
+            title="Caching the cookie read as well"
           >
-            Group 2&apos;s slots again, each with one directive changed to move
-            the cache somewhere other than this server&apos;s memory — into the
-            browser, or into a shared remote store.
+            Group 2&apos;s component-cached slot has one uncached step left: the
+            cookie read, which re-runs on every request because{" "}
+            <code className="font-mono">use cache</code> may not touch runtime
+            APIs. Wrapping just that step in{" "}
+            <code className="font-mono">use cache: private</code> caches it too
+            — per browser, since the answer differs per user.
           </SectionHeading>
         </div>
 
         <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
           <SlotCard
             variant="private"
-            title="use cache: private, on the component"
-            summary="Navigate away and back — this one does not reload."
+            title="use cache: private, around everything"
+            summary="One scope over the cookie read, the lookup and the render."
+            snippetId="private-all"
+            description={
+              <>
+                <p>
+                  The whole slot sits in a single private scope. That is legal
+                  and it works — a client navigation reuses all of it with{" "}
+                  <strong>no loading state</strong>, and it needs no wrapper,
+                  because a private scope may read{" "}
+                  <code className="font-mono">cookies()</code> directly.
+                </p>
+                <p>
+                  The catch is that nothing here reaches a server cache. The
+                  2000ms lookup runs again on every server render, and whatever
+                  is cached is cached per visitor — no two users share any of
+                  it. Watch the trace: this slot logs{" "}
+                  <code className="font-mono">RAN</code> every time.
+                </p>
+                <p>
+                  The card to its right splits the same work so only the
+                  per-user part is private.
+                </p>
+              </>
+            }
+          >
+            <Suspense
+              fallback={
+                <SlotSkeleton testId="private-all-skeleton" tint="sky" />
+              }
+            >
+              <PrivateEverythingCountrySlot />
+            </Suspense>
+          </SlotCard>
+
+          <SlotCard
+            variant="private"
+            title="use cache: private, on the wrapper"
+            summary="The cookie read is cached too — the costly half stays shared."
             snippetId="private-component"
             description={
               <>
                 <p>
-                  The result is held in your browser, so a client navigation
-                  reuses it with no server round trip and{" "}
-                  <strong>no loading state</strong>. The red slot in group 2 is
-                  the identical component without this directive, and it shows a
-                  skeleton every time.
+                  Only the <em>wrapper</em> is private. Inside it sits{" "}
+                  <code className="font-mono">CachedCountryPanel</code> — the
+                  same plain <code className="font-mono">use cache</code>{" "}
+                  component the violet slot renders, unchanged. The 2000ms
+                  lookup and 400ms render are still cached on the server and
+                  shared by every user.
                 </p>
                 <p>
-                  It also reads <code className="font-mono">cookies()</code>{" "}
-                  from inside the cached scope, which plain{" "}
-                  <code className="font-mono">use cache</code> forbids — so
-                  unlike the violet slot above it needs no uncached wrapper and
-                  no <code className="font-mono">code</code> prop.
+                  What the private scope adds is the ability to read{" "}
+                  <code className="font-mono">cookies()</code> inside a cache at
+                  all. In group 2 that read has to sit outside, uncached, and
+                  re-run on every request before the cache can even be
+                  consulted.
                 </p>
                 <p>
-                  Nothing is stored on the server, so a full page{" "}
-                  <em>reload</em> always pays again.{" "}
-                  <code className="font-mono">stale</code> is 300s: 30s is the
-                  minimum for runtime prefetching, 5 minutes to be eligible for
-                  the App Shell.
+                  So the split follows the data: private for the per-user bit
+                  (cheap, browser-held, never on the server), plain{" "}
+                  <code className="font-mono">use cache</code> for the expensive
+                  bit that everyone shares. A client navigation reuses the whole
+                  thing with <strong>no loading state</strong>; a full reload
+                  clears browser memory and re-runs the wrapper — though the
+                  panel inside it is still a server-side hit.
                 </p>
               </>
             }
@@ -355,47 +394,6 @@ export default function PprDemo() {
               }
             >
               <PrivateComponentCountrySlot />
-            </Suspense>
-          </SlotCard>
-
-          <SlotCard
-            variant="remote"
-            title="use cache: remote, on the component"
-            summary="The violet slot, with its entry moved to a shared store."
-            snippetId="remote-component"
-            description={
-              <>
-                <p>
-                  Byte-for-byte the violet slot in group 2, with one directive
-                  changed. It still cannot read{" "}
-                  <code className="font-mono">cookies()</code> — remote carries
-                  the same restriction as plain{" "}
-                  <code className="font-mono">use cache</code> — so the country
-                  code still arrives as a prop from an uncached wrapper.
-                </p>
-                <p>
-                  What moves is <em>where the entry lives</em>. Plain{" "}
-                  <code className="font-mono">use cache</code> is in-memory: one
-                  server instance, gone on restart or eviction. A remote handler
-                  is shared by every instance, so a hit does not depend on
-                  reaching the machine that computed it — which is why it is the
-                  reliable choice on serverless, where the in-memory variant
-                  misses constantly.
-                </p>
-                <p>
-                  The trade is a network round trip on every lookup, plus
-                  storage cost. Entries do not survive a deploy either: the
-                  build id is part of the cache key.
-                </p>
-              </>
-            }
-          >
-            <Suspense
-              fallback={
-                <SlotSkeleton testId="remote-component-skeleton" tint="teal" />
-              }
-            >
-              <RemoteCachedCountrySlot />
             </Suspense>
           </SlotCard>
         </div>

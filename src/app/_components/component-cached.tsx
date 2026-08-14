@@ -1,15 +1,10 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { trace } from "@/lib/trace";
 
 import { CACHE_TAGS } from "@/lib/cache-tags";
 
 import { OfferBody, StatusLine } from "@/app/_components/slot-body";
 import { getCatalog } from "@/lib/catalog";
-import {
-  fetchCountryOffer,
-  simulateRenderWork,
-  type CountryCode,
-} from "@/lib/countries";
+import { fetchCountryOffer, type CountryCode } from "@/lib/countries";
 import { resolveCountry } from "@/lib/geo";
 
 /**
@@ -30,17 +25,15 @@ export async function ComponentCachedCatalog() {
 
   // Inside the cached component: silent on a hit, because the whole function
   // is skipped and the stored markup is replayed instead.
-  trace("G1", "component", "ComponentCachedCatalog", "RAN", "cache miss");
 
   const catalog = await getCatalog();
-  const renderMs = await simulateRenderWork();
   const renderedAt = new Date().toISOString();
 
   return (
     <>
       <StatusLine
         timerId="catalog-component"
-        status={`rendered once in ${renderMs}ms · ${renderedAt}`}
+        status={`rendered once at ${renderedAt}`}
       />
       <CatalogList
         entries={catalog.entries}
@@ -76,33 +69,40 @@ export function CatalogList({
  *
  * A hit skips both the 2000ms lookup and the 400ms render.
  */
-async function CachedCountryPanel({ code }: { code: CountryCode }) {
+export async function CachedCountryPanel({
+  code,
+  slot = "component-country",
+}: {
+  code: CountryCode;
+  /**
+   * Which card this instance renders into. Group 3 reuses this exact
+   * component behind a private wrapper, and the two need distinct element ids
+   * so their arrival badges don't collide.
+   *
+   * It is part of the cache key, so the two cards get their own entries rather
+   * than sharing one. Everything else about them is identical.
+   */
+  slot?: "component-country" | "private-component";
+}) {
   "use cache";
   cacheLife("hours");
   cacheTag(CACHE_TAGS.countryPanel(code));
 
-  // Silent on a hit. Pair it with the wrapper's "requested" line below: that
-  // one always prints, so wrapper-without-panel means the cache served it.
-  trace("G2", "component", "CachedCountryPanel", "RAN", `code=${code}`);
-
   const offer = await fetchCountryOffer(code);
-  const renderMs = await simulateRenderWork();
   const renderedAt = new Date().toISOString();
 
   return (
     <>
       <StatusLine
-        timerId="country-component"
+        timerId={slot}
         status={
           <>
-            rendered once in {renderMs}ms ·{" "}
-            <span data-testid="component-country-rendered-at">
-              {renderedAt}
-            </span>
+            rendered once at{" "}
+            <span data-testid={`${slot}-rendered-at`}>{renderedAt}</span>
           </>
         }
       />
-      <OfferBody offer={offer} testId="component-country-slot" />
+      <OfferBody offer={offer} testId={`${slot}-slot`} />
     </>
   );
 }
@@ -113,16 +113,6 @@ async function CachedCountryPanel({ code }: { code: CountryCode }) {
  * component.
  */
 export async function ComponentCachedCountrySlot() {
-  // Uncached wrapper: always prints. If no "CachedCountryPanel RAN" line
-  // follows it, the cached markup was replayed.
-  trace(
-    "G2",
-    "component",
-    "ComponentCachedCountrySlot",
-    "requested",
-    "wrapper (uncached)",
-  );
-
   const { code } = await resolveCountry();
   return <CachedCountryPanel key={code} code={code} />;
 }

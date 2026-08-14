@@ -75,14 +75,13 @@ export function SlotSkeleton({
   tint,
 }: {
   testId: string;
-  tint: "red" | "amber" | "violet" | "sky" | "teal";
+  tint: "red" | "amber" | "violet" | "sky";
 }) {
   const bar = {
     red: "bg-red-500/20",
     amber: "bg-amber-500/20",
     violet: "bg-violet-500/20",
     sky: "bg-sky-500/20",
-    teal: "bg-teal-500/20",
   }[tint];
 
   return (
