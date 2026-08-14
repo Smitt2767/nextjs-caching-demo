@@ -53,11 +53,11 @@ async function TimingExplainer() {
           <p>
             <strong className="text-ink">Why not an effect or a ref.</strong>{" "}
             Both report when <em>React committed</em> the node, and React does
-            not finish hydrating a streamed page until its slowest slot
-            arrives. On the demo page that meant the static shell — the fastest
-            thing there — reported ~2s, slower than everything it was supposed
-            to beat. Parse-time stamping reports what the user actually saw:
-            around 100ms for the shell, ~2100ms for an uncached slot.
+            not finish hydrating a streamed page until its slowest slot arrives.
+            On the demo page that meant the static shell — the fastest thing
+            there — reported ~2s, slower than everything it was supposed to
+            beat. Parse-time stamping reports what the user actually saw: around
+            100ms for the shell, ~2100ms for an uncached slot.
           </p>
           <p>
             A ref callback still handles the second case: client-side
@@ -108,30 +108,41 @@ export default function Home() {
         </p>
       </header>
 
-      <ul className="space-y-3">
-        <li>
-          <Link
-            href="/ppr"
-            data-testid="ppr-link"
-            className="block rounded-xl border-2 border-dashed border-emerald-500/60 bg-surface-raised p-5 transition-colors hover:border-emerald-500"
-          >
-            <span className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
-              /ppr
-            </span>
-            <h2 className="mt-1 text-xl font-semibold text-ink">
-              Partial Prerendering &amp;{" "}
-              <code className="font-mono">use cache</code>
-            </h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-              Seven slots: what lands in the static shell, what streams in at
-              request time, and the difference between caching the data,
-              caching the whole component, and caching it in the browser.
-            </p>
-          </Link>
-        </li>
-      </ul>
-
+      {/* Preamble: applies to every demo below, so it sits above the list —
+          which grows downward as demos are added. */}
       <TimingExplainer />
+
+      <section aria-labelledby="demos-heading">
+        <h2
+          id="demos-heading"
+          className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-subtle"
+        >
+          Demos
+        </h2>
+
+        <ul className="mt-3 space-y-3">
+          <li>
+            <Link
+              href="/ppr"
+              data-testid="ppr-link"
+              className="block rounded-xl border-2 border-dashed border-emerald-500/60 bg-surface-raised p-5 transition-colors hover:border-emerald-500"
+            >
+              <span className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                /ppr
+              </span>
+              <h3 className="mt-1 text-xl font-semibold text-ink">
+                Partial Prerendering &amp;{" "}
+                <code className="font-mono">use cache</code>
+              </h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                Seven slots: what lands in the static shell, what streams in at
+                request time, and the difference between caching the data,
+                caching the whole component, and caching it in the browser.
+              </p>
+            </Link>
+          </li>
+        </ul>
+      </section>
     </main>
   );
 }
