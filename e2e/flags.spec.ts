@@ -9,11 +9,28 @@ import { PERSONAS } from "../src/lib/personas";
 
 const ATTRS = ["id", "audience", "device", "country", "daypart"] as const;
 
+/**
+ * Scope an attribute to its section.
+ *
+ * While a Suspense boundary is in flight React parks a copy of its content in a
+ * hidden buffer at the end of <body>, then a script moves it into place. For a
+ * moment two nodes carry the same testid, which trips Playwright's strict mode.
+ * The section wrapper is static and never inside the boundary, so going through
+ * it always resolves the placed copy. Same reason /ppr's spec has `slot()`.
+ */
+function attr(page: Page, key: (typeof ATTRS)[number]) {
+  return page.getByTestId("attributes-section").getByTestId(`attr-${key}`);
+}
+
 /** Wait for the streamed panel before touching the switcher: the control is in
  *  the static shell, so it is clickable well before React has attached its
  *  handler, and on a slower device the change event lands on nothing. */
 async function ready(page: Page) {
-  await expect(page.getByTestId("attributes-panel")).toBeVisible();
+  // Scoped for the same reason as `attr()` above — the streamed panel exists
+  // twice for a moment, once in React's buffer and once in place.
+  await expect(
+    page.getByTestId("attributes-section").getByTestId("attributes-panel"),
+  ).toBeVisible();
 }
 
 test.describe("flags: the visitor id", () => {
@@ -21,23 +38,23 @@ test.describe("flags: the visitor id", () => {
     await page.goto("/flags");
     await ready(page);
 
-    const first = await page.getByTestId("attr-id").textContent();
+    const first = await attr(page, "id").textContent();
     expect(first).toMatch(/^[0-9a-f-]{36}$/);
 
     await page.reload();
-    await expect(page.getByTestId("attr-id")).toHaveText(first!);
+    await expect(attr(page, "id")).toHaveText(first!);
   });
 
   test("a different browser gets a different id", async ({ page, browser }) => {
     await page.goto("/flags");
     await ready(page);
-    const mine = await page.getByTestId("attr-id").textContent();
+    const mine = await attr(page, "id").textContent();
 
     const other = await browser.newContext();
     const otherPage = await other.newPage();
     await otherPage.goto("/flags");
     await ready(otherPage);
-    const theirs = await otherPage.getByTestId("attr-id").textContent();
+    const theirs = await attr(otherPage, "id").textContent();
     await other.close();
 
     expect(theirs).toMatch(/^[0-9a-f-]{36}$/);
@@ -56,8 +73,8 @@ test.describe("flags: attributes", () => {
     await expect(page.getByTestId("persona-select")).toBeVisible();
     await ready(page);
 
-    for (const attr of ATTRS) {
-      await expect(page.getByTestId(`attr-${attr}`)).not.toBeEmpty();
+    for (const key of ATTRS) {
+      await expect(attr(page, key)).not.toBeEmpty();
     }
   });
 
@@ -68,20 +85,20 @@ test.describe("flags: attributes", () => {
 
     await page.goto("/flags");
     await ready(page);
-    const idBefore = await page.getByTestId("attr-id").textContent();
+    const idBefore = await attr(page, "id").textContent();
 
     await page.getByTestId("persona-select").selectOption(persona.id);
     for (const [key, value] of Object.entries(persona.attributes)) {
-      await expect(page.getByTestId(`attr-${key}`)).toHaveText(value);
+      await expect(attr(page, key as (typeof ATTRS)[number])).toHaveText(value);
     }
 
     // The persona covers targeting only. The bucketing id is not a targeting
     // dimension and must not move, or every variant would reshuffle with it.
-    await expect(page.getByTestId("attr-id")).toHaveText(idBefore!);
+    await expect(attr(page, "id")).toHaveText(idBefore!);
 
     await page.getByTestId("persona-select").selectOption("");
-    await expect(page.getByTestId("attr-audience")).toHaveText("organic");
-    await expect(page.getByTestId("attr-id")).toHaveText(idBefore!);
+    await expect(attr(page, "audience")).toHaveText("organic");
+    await expect(attr(page, "id")).toHaveText(idBefore!);
   });
 
   test("a campaign is captured on the landing request and then kept", async ({
@@ -91,13 +108,13 @@ test.describe("flags: attributes", () => {
     // into the request's cookie store before the component reads it.
     await page.goto("/flags?utm_campaign=ad-anxiety");
     await ready(page);
-    await expect(page.getByTestId("attr-audience")).toHaveText("ad-anxiety");
+    await expect(attr(page, "audience")).toHaveText("ad-anxiety");
 
     // And survives the URL losing the parameter — otherwise a visitor would
     // silently reclassify as organic partway through an experiment.
     await page.goto("/flags");
     await ready(page);
-    await expect(page.getByTestId("attr-audience")).toHaveText("ad-anxiety");
+    await expect(attr(page, "audience")).toHaveText("ad-anxiety");
   });
 
   test("an unknown campaign is ignored rather than stored", async ({
@@ -105,7 +122,7 @@ test.describe("flags: attributes", () => {
   }) => {
     await page.goto("/flags?utm_campaign=not-a-real-audience");
     await ready(page);
-    await expect(page.getByTestId("attr-audience")).toHaveText("organic");
+    await expect(attr(page, "audience")).toHaveText("organic");
   });
 });
 
@@ -146,7 +163,7 @@ test.describe("flags: device classification", () => {
       const page = await context.newPage();
       await page.goto("/flags");
       await ready(page);
-      await expect(page.getByTestId("attr-device")).toHaveText(expected);
+      await expect(attr(page, "device")).toHaveText(expected);
       await context.close();
     });
   }

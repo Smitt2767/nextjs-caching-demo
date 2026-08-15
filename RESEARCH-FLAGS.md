@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.1 (design study — no code written yet) |
-| **Status** | Pre-implementation. Nothing in this document has been measured. |
+| **Version** | 0.2 (design study; steps 1–3 built) |
+| **Status** | In progress. First measurements recorded in §13.1. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -18,8 +18,9 @@
 > that this stack's documentation can be correct and still mislead, because the
 > failure was invisible locally. Every claim below is therefore tagged with where
 > it came from: **[docs]**, **[vendor]**, **[inferred]**, or **[measured]**.
-> There is not a single **[measured]** tag in this document yet. That is the point
-> of Part 2.
+> Four **[measured]** results are now recorded in §13.1, from steps 1–3. Two of
+> them (M2, M3) are build-breaking behaviours whose error messages point
+> somewhere other than the cause. Everything else is still unverified.
 
 ---
 
@@ -70,11 +71,23 @@ perfectly, and the experiment results are silently worthless (§9). This is the
 same class of failure as §5.3 in the companion report: correct-looking code,
 no error, wrong outcome.
 
+**What steps 1–3 have already shown** (§13.1). A flag with no targeting really
+does cost nothing at request time — one read at build, zero per request. And two
+build-breaking behaviours surfaced that no amount of reading would have
+predicted: a `use cache` scope that throws fails the *build* even when the caller
+catches the error, and a `cacheLife` with `stale` under five minutes makes shell
+content unprerenderable while reporting an error that names something else
+entirely. Both are now guarded in code and recorded as risks F8 and F9.
+
 **Recommendation:** proceed, building Tier 1 as the default and Tier 2 for the
-hero slot only. Use `@flags-sdk/growthbook` rather than the raw GrowthBook SDK,
-because precompute is a Flags SDK capability and hand-rolling it is not worth it
-(§11.1). Build the exposure counter described in §11.3 first — it is the one
-demo that will change how the team writes this code.
+hero slot only. Build the exposure counter described in §11.3 first — it is the
+one demo that will change how the team writes this code.
+
+**Amended since 0.1:** §11.1 recommended `@flags-sdk/growthbook` from the outset.
+Steps 3–9 now use the plain GrowthBook SDK with an explicit `use cache` fetch
+instead, because the adapter manages payload fetching and caching internally —
+which is the exact variable those steps exist to measure. The Flags SDK comes in
+at step 11, where precompute genuinely needs it.
 
 ---
 
@@ -470,10 +483,17 @@ that variant get a slower page. Adding options should be paired with a deploy.
 This is the only I/O in the whole system, so it is the only thing worth caching
 carefully. Three viable stores:
 
-1. **Vercel Edge Config** — the `@flags-sdk/growthbook` adapter reads the payload
-   from Edge Config when `GROWTHBOOK_EDGE_CONNECTION_STRING` is set, and a
-   GrowthBook SDK webhook keeps it current **[vendor]**. Near-zero read latency,
-   available in proxy, survives deploys. **Recommended on Vercel.**
+1. **Vercel Edge Config** — GrowthBook syncs the payload into it, keyed by the
+   SDK client key. Near-zero read latency on Vercel, available in proxy, survives
+   deploys. **Recommended on Vercel**, and now implemented in
+   `src/lib/flags/ruleset.ts` with the CDN as fallback.
+
+   Two corrections from wiring it up **[measured]**: the Vercel marketplace
+   integration provisions the connection string as `EXPERIMENTATION_CONFIG`, not
+   `GROWTHBOOK_EDGE_CONNECTION_STRING`; and the connection string's `?token=`
+   query parameter is rejected by the REST endpoint, which wants
+   `Authorization: Bearer`. The `@vercel/edge-config` client handles the latter,
+   but raw `curl` against the string as provisioned will 401.
 2. **`use cache: remote` + `cacheTag('growthbook-payload')`** — works anywhere,
    shared across instances. Does not survive a deploy **[docs]**, so every deploy
    causes a fresh payload fetch from every cold instance.
@@ -686,6 +706,8 @@ worked: the number is unarguable and the wrong version looks correct.
 | **F5** | Adding a flag option orphans traffic onto unbuilt permutations | Low | Slower first visits in the new variant | Degrades to App Shell, not an error. Pair option changes with a deploy |
 | **F6** | UTM audience lost after the landing page; visitors reclassify mid-experiment | Medium | Cohort sizes drifting over time | Persist audience to a cookie in proxy on first sight (§5.2) |
 | **F7** | Proxy cost on every request including RSC prefetches | Unknown | Invocation counts on the deployment | Tighten `matcher`; measure before assuming (§13) |
+| **F8** | A `use cache` scope that throws fails the **build**, so an outage at GrowthBook blocks every deploy | High | Only a real outage, or a deliberate bad key | Cached scopes return failure as a value, never throw (§13.1 M2) |
+| **F9** | A `cacheLife` with `stale` under 5 min makes shell content unprerenderable, reported as an unrelated "uncached data" error | Medium | Build failure naming code that did not change | Keep `stale` ≥ 300 on anything in the static shell (§13.1 M3) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -693,13 +715,128 @@ decisions were correct, and it does so without any symptom.
 
 ---
 
-## 13. Claims to verify before committing · **the §5.3 discipline**
+## 13. Evidence · **the §5.3 discipline**
 
 The companion report's central lesson was that this stack's documentation can be
-accurate while the local environment lies. Everything above is **[docs]**,
-**[vendor]**, or **[inferred]**. Nothing is **[measured]**. The following must be
-measured on the deployed application, using the six-request curl loop already
-documented in `README.md`, before any of it informs the real project.
+accurate while the local environment lies. Most of this document is still
+**[docs]**, **[vendor]** or **[inferred]**. What has been measured is below.
+
+### 13.1 Measured findings
+
+Everything here comes from steps 1–3 of `FLAGS-PLAN.md`, on a local production
+build. Local results do not settle deployment behaviour (§5.3 of the companion
+report is the standing reminder), but these three are framework behaviour rather
+than platform behaviour, so they are unlikely to differ.
+
+---
+
+**M1. A flag with no targeting costs nothing at request time.** **[measured]**
+
+`getRuleset()` takes no request-time input, so it resolves during the prerender
+and the value is baked into the static shell. Instrumented the fetch and counted:
+
+| | Reads of the GrowthBook ruleset |
+| --- | --- |
+| During `next build` | **1** |
+| Across 8 subsequent requests | **0** |
+
+This is the whole argument of §4.3 made concrete. Release toggles and kill
+switches — flags with no rules — are free, and routing them through request-time
+evaluation buys nothing.
+
+---
+
+**M2. An error thrown inside a `use cache` scope fails the prerender even when
+the caller catches it.** **[measured]** · *the important one*
+
+With a deliberately invalid client key, `getRuleset()` threw and the `catch` in
+`getFlag()` ran — visibly, twice, in the build log — returning the code default
+exactly as designed. The build failed anyway:
+
+```
+[flags] falling back to default for "catalog-kill-switch"   ← the catch ran
+Error occurred prerendering page "/flags"
+Export encountered an error on /flags/page: /flags, exiting the build.
+```
+
+React surfaces the error to the prerender before the calling code ever sees it,
+so catching it changes the value but not the outcome.
+
+**Why it matters beyond this prototype.** Any `use cache` scope that wraps a
+network call to a third party now has a property nobody would guess: *a bad
+minute at that third party fails your deploy.* Not a degraded page — a failed
+build. For a flag service, whose entire purpose is to be changed without
+deploying, that is close to the opposite of what you want.
+
+**The fix** is that a cached scope must not throw. Handle failure inside it and
+report the failure as a value:
+
+```ts
+export async function getRuleset(): Promise<Ruleset | null> {
+  "use cache";
+  try {
+    /* ... */
+  } catch {
+    return null;   // not `throw`
+  }
+}
+```
+
+---
+
+**M3. A short `cacheLife` makes a shell-resident scope unprerenderable, and says
+so in unrelated words.** **[measured]**
+
+The first attempt at M2's fix used `cacheLife("seconds")` on the failure path, so
+that an outage would be retried in a second rather than cached for minutes like
+an answer. The build failed with:
+
+```
+Route "/flags": Next.js encountered uncached or runtime data during prerendering.
+`fetch(...)`, `cookies()`, `headers()`, `params`, `searchParams`, or
+`connection()` accessed outside of <Suspense> prevents the route from being
+prerendered
+```
+
+Nothing in that message mentions cache lifetimes, and the code it names had not
+changed. The cause is the `stale` field: it also decides whether content is
+eligible for the route's **App Shell**, and the `seconds` profile has
+`stale: 30s`. Anything under five minutes makes the scope unprerenderable, at
+which point a scope outside `<Suspense>` is a build error.
+
+`revalidate` and `expire` can be as short as you like. `stale` cannot:
+
+```ts
+cacheLife({ stale: 300, revalidate: 30, expire: 300 });
+```
+
+Fast retry, still shell-eligible. Worth noting the same threshold already appears
+in the companion prototype — `PrivateComponentCountrySlot` sets `stale: 300` for
+exactly this reason — so this is a general rule about the static shell rather
+than anything specific to flags.
+
+---
+
+**M4. Both ruleset sources work; the transport is not yet the bottleneck.**
+**[measured]**
+
+Rebuilt with each source disabled in turn:
+
+| Source | Read time (build, local) |
+| --- | --- |
+| Vercel Edge Config | 376ms |
+| GrowthBook CDN | 1174ms |
+
+Suggestive but not decisive, and *not* the number that matters. Both are a single
+read at build, so at present the transport costs nothing per request either way
+(M1). The comparison becomes load-bearing at step 11, where proxy cannot use
+`use cache` and must read the ruleset on every request. Claim 9 below is still
+the real test, and it has to run on the deployment.
+
+### 13.2 Claims still to verify
+
+The following must be measured on the deployed application, using the
+six-request curl loop already documented in `README.md`.
 
 | # | Claim | Source | How to test |
 | --- | --- | --- | --- |
@@ -762,3 +899,4 @@ Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
 | Version | Date | Change |
 | --- | --- | --- |
 | 0.1 | 15 Aug 2026 | Initial design study. No code, no measurements. |
+| 0.2 | 15 Aug 2026 | Steps 1–3 built. §13 split into measured findings (M1–M4) and remaining claims; risks F8 and F9 added from M2 and M3. |

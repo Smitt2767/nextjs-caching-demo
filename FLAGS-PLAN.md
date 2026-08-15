@@ -12,19 +12,22 @@ shaped this way. You don't need it to follow along.
 
 ## The 11 steps
 
-| # | Step | GrowthBook needed? |
-| --- | --- | --- |
-| 1 | Anonymous visitor ID | no |
-| 2 | Targeting attributes + persona switcher | no |
-| 3 | Connect GrowthBook, one simple flag | **yes** — first setup |
-| 4 | Webhook, so flag changes appear instantly | **yes** — small |
-| 5 | Targeting: a flag that varies by country | **yes** — small |
-| 6 | First experiment: 3 variants | **yes** — small |
-| 7 | Cache the variant | no |
-| 8 | The exposure counter | no |
-| 9 | Deploy and measure on Vercel | no |
-| 10 | Per-user entitlement flag | **yes** — small |
-| 11 | Precompute (build-time variants) | no |
+**Done so far: 1, 2, 3.** Findings from them are in `RESEARCH-FLAGS.md` §13.1 —
+two of the three were build-breaking surprises worth reading before step 4.
+
+| # | Step | GrowthBook needed? | |
+| --- | --- | --- | --- |
+| 1 | Anonymous visitor ID | no | ✅ |
+| 2 | Targeting attributes + persona switcher | no | ✅ |
+| 3 | Connect GrowthBook, one simple flag | **yes** — first setup | ✅ |
+| 4 | Webhook, so flag changes appear instantly | **yes** — small |  |
+| 5 | Targeting: a flag that varies by country | **yes** — small |  |
+| 6 | First experiment: 3 variants | **yes** — small |  |
+| 7 | Cache the variant | no |  |
+| 8 | The exposure counter | no |  |
+| 9 | Deploy and measure on Vercel | no |  |
+| 10 | Per-user entitlement flag | **yes** — small |  |
+| 11 | Precompute (build-time variants) | no |  |
 
 Steps 1–2 need no GrowthBook at all, so we can start immediately.
 
@@ -158,14 +161,20 @@ GROWTHBOOK_CLIENT_KEY      required
 GROWTHBOOK_API_HOST        optional, defaults to https://cdn.growthbook.io
 ```
 
-⚠ The Vercel integration may have provisioned **different names**.
+**Resolved:** the Vercel integration provisions `GROWTHBOOK_CLIENT_KEY` under
+exactly that name, so nothing needed aliasing. It also provisions
+`EXPERIMENTATION_CONFIG`, which is the **Vercel Edge Config** connection string —
+GrowthBook syncs the ruleset into Edge Config, and the code now prefers it, with
+the CDN as fallback. Both paths are verified.
 
-- [ ] Run `npx vercel env pull` — it writes the real names into `.env.local`
-- [ ] Send me the variable **names** (not the values) and I'll match the code
+Two things that cost time, worth knowing:
 
-This matters more than it looks: a wrong variable name gives you an SDK that
-silently returns the default for every flag. That looks identical to a working
-app with everything switched off.
+- The name is `EXPERIMENTATION_CONFIG`, not the
+  `GROWTHBOOK_EDGE_CONNECTION_STRING` the adapter docs mention.
+- The connection string ends in `?token=…`, but that query parameter is
+  **rejected** by the REST endpoint — it wants `Authorization: Bearer`. The
+  `@vercel/edge-config` client handles this; raw `curl` against the string as
+  provisioned returns 401.
 
 ### 3b. Check it before writing any code
 
