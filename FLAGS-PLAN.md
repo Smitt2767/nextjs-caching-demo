@@ -12,15 +12,16 @@ shaped this way. You don't need it to follow along.
 
 ## The 11 steps
 
-**Done so far: 1, 2, 3.** Findings from them are in `RESEARCH-FLAGS.md` §13.1 —
-two of the three were build-breaking surprises worth reading before step 4.
+**Done so far: 1, 2, 3, and 4** — step 4 with a caveat, since the webhook it
+wanted is not available on the free plan. Findings are in `RESEARCH-FLAGS.md`
+§13.1; two of them were build-breaking surprises worth reading first.
 
 | # | Step | GrowthBook needed? | |
 | --- | --- | --- | --- |
 | 1 | Anonymous visitor ID | no | ✅ |
 | 2 | Targeting attributes + persona switcher | no | ✅ |
 | 3 | Connect GrowthBook, one simple flag | **yes** — first setup | ✅ |
-| 4 | Webhook, so flag changes appear instantly | **yes** — small |  |
+| 4 | Faster flag changes (30s, by polling) | webhook blocked — free plan | ⚠️ |
 | 5 | Targeting: a flag that varies by country | **yes** — small |  |
 | 6 | First experiment: 3 variants | **yes** — small |  |
 | 7 | Cache the variant | no |  |
@@ -196,7 +197,7 @@ Check the environment toggle before you check anything else.
 **Test:**
 
 - [ ] `/flags` shows `catalog-kill-switch: ON`
-- [ ] Turn it off in GrowthBook, wait a minute, reload → shows `OFF`
+- [ ] Turn it off in GrowthBook, wait ~30s, reload → shows `OFF`
 - [ ] The flag value appears in the page's HTML source (View Source, not
       DevTools) — proving it was baked in, not fetched by the browser
 
@@ -204,45 +205,74 @@ Check the environment toggle before you check anything else.
 
 ---
 
-## Step 4 — Webhook, so flag changes appear instantly
+## Step 4 — Faster flag changes · ⚠️ built, but the webhook is blocked
 
-**Goal.** Cut the "wait a minute" from step 3 down to a couple of seconds.
+**Goal.** Cut the wait between flipping a flag and seeing it.
 
-**Why.** Right now we re-fetch the ruleset on a timer. A webhook lets GrowthBook
-tell us the moment something changed.
+**Outcome: 30 seconds, by polling.** The webhook that would have made it instant
+is not available on the free plan — see below. The handler is written and tested
+and will take over the moment a slot exists.
 
-**GrowthBook:**
+### What blocked it
 
-- [ ] Open your production **SDK Connection**, find the **SDK Webhooks** section
-- [ ] Add a webhook:
-  - Endpoint URL: `https://<your-vercel-domain>/api/growthbook-webhook`
-  - Method: `POST`
-  - Payload format: **Standard (no SDK payload)**
-- [ ] Copy the **shared secret** shown on the connection page
-- [ ] Add it in Vercel as `GROWTHBOOK_WEBHOOK_SECRET`
+GrowthBook's free plan allows **one SDK webhook per organisation**. Not per
+connection — creating a second SDK Connection gets you a second slot in the UI
+and the same `your webhook limit has been reached` error when you use it. The one
+slot is already taken by **Vercel's Edge Config sync**, which is itself an SDK
+webhook (`Managed by Vercel`), and giving it up would leave Edge Config stale
+forever.
 
-"No SDK payload" because our handler doesn't need the ruleset — it only needs to
-know something changed, then it clears the cache and the next request refetches.
+Two alternatives were checked and neither helps:
 
-**Code:**
+- **Global SDK Webhooks** — self-hosted GrowthBook only, not Cloud.
+- **Event Webhooks** (Settings → Webhooks) — a separate system with a separate
+  limit, and worth trying if you ever want instant invalidation. It uses a
+  different signature scheme (`X-GrowthBook-Signature`, `ewhk_` secret), so it
+  needs a second verification path in the route.
 
-- `src/app/api/growthbook-webhook/route.ts` — verify the signature, then call
-  `revalidateTag('growthbook-payload', 'max')`
+### What we did instead
 
-GrowthBook signs with three headers: `webhook-id`, `webhook-timestamp`, and
-`webhook-signature`. The signature value starts with `v1,` — that prefix is part
-of the value and has to be stripped before comparing.
+```ts
+// src/lib/flags/ruleset.ts
+cacheLife({ stale: 300, revalidate: 30, expire: 3600 });
+```
+
+A flag change lands within 30 seconds. The cost is one ruleset read per instance
+per 30s — and through Edge Config on Vercel that is a replicated local read, not
+a network hop, so it is close to free. `stale` stays at 300 because anything
+lower makes this scope ineligible for the static shell (`RESEARCH-FLAGS.md`
+§13.1 M3).
+
+### The handler, if you ever get a slot
+
+`src/app/api/growthbook-webhook/route.ts` is complete. Point a webhook at
+`/api/growthbook-webhook`, format **Standard (no SDK payload)**, put the shared
+secret in `GROWTHBOOK_WEBHOOK_SECRET`, and drop the `revalidate` back to
+`minutes`.
+
+It follows Standard Webhooks — HMAC-SHA256 over `{id}.{timestamp}.{body}`,
+base64, against the `v1,`-prefixed header — with two deliberate departures from
+GrowthBook's documented sample:
+
+- `timingSafeEqual` **throws** on a length mismatch, so their example turns a
+  forged signature into a 500 rather than a 401. Length is checked first.
+- The header can carry several space-separated signatures, which is how the spec
+  supports rotating a secret without dropping deliveries. Any match passes.
+
+Plus a five-minute timestamp tolerance, without which a captured request stays
+replayable forever.
+
+**Verified locally** by computing signatures by hand — valid 200, forged 401,
+wrong-length 401, tampered body 401, ten-minute replay 400, missing headers 400,
+rotation pair 200 — and behaviourally: four requests before the webhook produced
+zero ruleset re-reads, three after produced two.
 
 **Test:**
 
 - [ ] Flip `catalog-kill-switch` in GrowthBook
-- [ ] Reload the page within ~5 seconds → it already shows the new value
-- [ ] Send a fake POST with a wrong signature → returns 401
+- [ ] Reload `/flags` after ~30s → shows the new value
 
-**Note:** webhooks only reach a deployed URL, not `localhost`. Test this one on
-Vercel.
-
-**Done when:** a flag flip shows up on the next reload, not the next minute.
+**Done when:** a flag flip appears without a deploy.
 
 ---
 

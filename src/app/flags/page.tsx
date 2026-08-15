@@ -147,9 +147,18 @@ export default function FlagsPage() {
         <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
           View source rather than the element inspector: the value is in the
           HTML the server sent, not something the browser fetched. Toggle it in
-          GrowthBook and it changes within about a minute — the ruleset is
-          cached with <code className="font-mono">cacheLife(&quot;minutes&quot;)</code>
-          . Step 4 replaces that wait with a webhook.
+          GrowthBook and it lands within 30 seconds.
+        </p>
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
+          That 30 seconds is polling, not notification. A webhook would make it
+          near-instant, and{" "}
+          <code className="font-mono">/api/growthbook-webhook</code> is built and
+          tested — but GrowthBook&apos;s free plan allows{" "}
+          <strong className="text-ink">one SDK webhook per organisation</strong>,
+          and Vercel&apos;s Edge Config sync already occupies it. Since a ruleset
+          read through Edge Config is a replicated local read rather than a
+          network hop, polling every 30s is cheap enough that this is a
+          reasonable place to stop.
         </p>
       </section>
     </main>

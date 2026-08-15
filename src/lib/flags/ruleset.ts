@@ -46,6 +46,29 @@ const DEFAULT_API_HOST = "https://cdn.growthbook.io";
  */
 const FAILURE_LIFE = { stale: 300, revalidate: 30, expire: 300 };
 
+/**
+ * The cache profile for a successful read.
+ *
+ * `revalidate: 30` rather than `cacheLife("minutes")` because the webhook that
+ * was supposed to make this a ceiling is not available: GrowthBook's free plan
+ * allows **one SDK webhook per organisation**, and Vercel's Edge Config sync
+ * already holds it. So a flag change lands within 30 seconds by polling instead
+ * of within one second by notification.
+ *
+ * The cost of that is one small ruleset read per instance per 30s — through
+ * Edge Config on Vercel, which is a replicated local read rather than a network
+ * hop. Cheap enough that the webhook is a nicety here rather than a necessity.
+ *
+ * `stale` stays at 300 for the reason in `FAILURE_LIFE`: under five minutes and
+ * this scope stops being eligible for the static shell, which fails the build
+ * with an error that names something else entirely.
+ *
+ * `src/app/api/growthbook-webhook/route.ts` still exists and still works — it
+ * simply has nothing pointed at it. Given a webhook slot, it takes over and
+ * this becomes the backstop it was meant to be.
+ */
+const SUCCESS_LIFE = { stale: 300, revalidate: 30, expire: 3600 };
+
 export type RulesetSource = "edge-config" | "growthbook-cdn";
 
 export type Ruleset = {
@@ -115,10 +138,10 @@ export async function getRuleset(): Promise<Ruleset | null> {
   "use cache";
   cacheTag(RULESET_TAG);
 
-  // `cacheLife` is called once per branch below rather than once at the top:
-  // a successful read is good for minutes, but a failure should be retried
-  // much sooner than that — otherwise one blip is cached as if it were an
-  // answer.
+  // `cacheLife` is called once per branch below rather than once at the top,
+  // so a failed read can carry a different lifetime from a successful one.
+  // They differ only in `expire`: a success is good for an hour, a failure for
+  // five minutes, and neither is cached as though it were the other.
   const clientKey = process.env.GROWTHBOOK_CLIENT_KEY;
   if (!clientKey) {
     console.error("[flags] GROWTHBOOK_CLIENT_KEY is not set");
@@ -130,9 +153,7 @@ export async function getRuleset(): Promise<Ruleset | null> {
 
   const fromEdge = await readFromEdgeConfig(clientKey);
   if (fromEdge) {
-    // `minutes` for now: a flag change shows up within about a minute. Step 4
-    // adds the webhook, after which this is a ceiling rather than the mechanism.
-    cacheLife("minutes");
+    cacheLife(SUCCESS_LIFE);
     return {
       payload: fromEdge,
       source: "edge-config",
@@ -142,7 +163,7 @@ export async function getRuleset(): Promise<Ruleset | null> {
 
   try {
     const payload = await readFromCdn(clientKey);
-    cacheLife("minutes");
+    cacheLife(SUCCESS_LIFE);
     return {
       payload,
       source: "growthbook-cdn",
