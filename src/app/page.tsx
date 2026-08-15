@@ -194,7 +194,23 @@ async function CacheDirectives() {
           by asking what the work depends on, not by how slow it is.
         </p>
 
-        <div className="mt-4 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {/* The takeaway, stated once, and the only part kept open: both
+            mistakes it names are the intuitive choice, and neither produces
+            an error. The three cards below are the detail behind it. */}
+        <p className="mt-4 border-l-[3px] border-line pl-3 text-[13px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">The rule.</strong> What is expensive
+          should be shared; what is personal should be cheap. Both ways of
+          getting this wrong fail silently — no error, no warning, and a local
+          server reports cache hits for all three.
+        </p>
+      </div>
+
+      <Disclosure
+        testId="directive-cards-toggle"
+        label="the three, one card each"
+        hint="what each one stores, and what it costs"
+      >
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           {DIRECTIVES.map((d) => (
             <article
               key={d.name}
@@ -231,16 +247,7 @@ async function CacheDirectives() {
             </article>
           ))}
         </div>
-
-        {/* The takeaway, stated once. Both mistakes above are the intuitive
-            choice, and neither produces an error. */}
-        <p className="mt-4 border-l-[3px] border-line pl-3 text-[13px] leading-relaxed text-ink-muted">
-          <strong className="text-ink">The rule.</strong> What is expensive
-          should be shared; what is personal should be cheap. Both ways of
-          getting this wrong fail silently — no error, no warning, and a local
-          server reports cache hits for all three.
-        </p>
-      </div>
+      </Disclosure>
 
       {/* The evidence for card 1's "watch out", and the reason card 2 exists.
           Collapsed, because it is the proof rather than the claim. */}
