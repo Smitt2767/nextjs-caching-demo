@@ -24,7 +24,15 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "desktop",
+      use: {
+        ...devices["Desktop Chrome"],
+        // E2E_CHROME=1 drives the real Google Chrome install instead of the
+        // bundled Chromium. Opt-in, because CI may not have Chrome.
+        channel: process.env.E2E_CHROME ? "chrome" : undefined,
+      },
+    },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   // instant() is only meaningful against a production build. `next dev` does

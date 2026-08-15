@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "E2E_CHROME=1 playwright test --project=desktop --headed",
+    "test:e2e:ui": "E2E_CHROME=1 playwright test --project=desktop --ui"
   },
   "dependencies": {
     "next": "16.3.1",

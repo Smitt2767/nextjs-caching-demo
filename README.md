@@ -61,8 +61,23 @@ first opened. Reload for clean numbers. The index explains this behind a
 ## Run it
 
 ```bash
-pnpm dev            # http://localhost:3000 — the demo is at /ppr
-pnpm test:e2e       # builds, serves on :3100, asserts the shell is instant
+pnpm dev              # http://localhost:3000 — the demo is at /ppr
+pnpm test:e2e         # headless: builds, serves on :3100, asserts the shell is instant
+pnpm test:e2e:ui      # watch the tests in Playwright's UI, with time-travel
+pnpm test:e2e:headed  # watch them run in a visible browser
+```
+
+The last two use your real Google Chrome install rather than Playwright's
+bundled Chromium (`E2E_CHROME=1`), and run the desktop project only. The
+default `pnpm test:e2e` stays on bundled Chromium so it works anywhere.
+
+If a run reports **`localhost:3100 is already used`**, a server from a previous
+run is still up. That is deliberate — the config sets
+`reuseExistingServer: false` so a test can never measure a stale build — so
+clear it and re-run:
+
+```bash
+kill $(ss -ltnp | grep ':3100' | grep -oP 'pid=\K[0-9]+')
 ```
 
 `/` is a static index that links to the demo; `/ppr` is the demo itself. The
