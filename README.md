@@ -360,6 +360,13 @@ design variables for this style specify `border-radius: 0` and `shadow: none`.
   states its strategy in text.
 - **Three columns on desktop**, two on tablet, one on mobile, across every
   page. Sections grow downward as demos and tools are added.
+- **Cards keep independent heights** (`items-start`), deliberately. Stretching
+  them to match looked tidier, but expanding one card's disclosure then grew
+  the whole row and slid its neighbours' toggles out from under the cursor.
+  Ragged bottoms are worth avoiding that.
+- **Long prose runs in columns rather than one narrow measure.** The index's
+  explainer is three columns on desktop: full width, still readable, and about
+  half the height it was stacked.
 - **Type** is IBM Plex Sans with JetBrains Mono for timings, tags and code,
   loaded through `next/font` so they self-host with no layout shift.
 

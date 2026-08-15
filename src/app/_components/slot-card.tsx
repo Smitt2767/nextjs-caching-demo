@@ -112,7 +112,7 @@ export async function SlotCard({
       {/* The only dynamic region. Everything above and below is prerendered. */}
       <div className="flex-1 px-4 pb-4 pl-5">{children}</div>
 
-      <div className="mt-auto">
+      <div>
         <Disclosure
           testId={`about-toggle-${snippetId}`}
           label="what this shows"

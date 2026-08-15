@@ -21,7 +21,7 @@ async function TimingExplainer() {
       data-testid="timing-explainer"
       className="border border-line bg-surface-raised"
     >
-      <div className="max-w-3xl p-5">
+      <div className="p-5">
         <h2 className="text-base font-semibold text-ink">
           About the{" "}
           <span className="bg-ink px-1.5 py-0.5 font-mono text-[11px] font-bold text-surface-raised">
@@ -29,25 +29,27 @@ async function TimingExplainer() {
           </span>{" "}
           badges
         </h2>
-        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
-          Each panel shows roughly when its markup arrived, measured in the
-          browser from the start of the page load. They are here so the panels
-          can be <strong>compared with each other</strong> — that is the whole
-          job.
-        </p>
-        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
-          They are <strong>not</strong> real performance numbers. Not your
-          server&apos;s response time, not time-to-first-byte, and not what a
-          user would perceive as load time. Treat them as an audit aid for this
-          demo, and use the Performance panel or a Core Web Vitals tool if you
-          need figures that mean something outside it.
-        </p>
-        <p className="mt-2 text-[13px] leading-relaxed text-ink-subtle">
-          Read them on a <strong>fresh page load</strong>. After a client
-          navigation no new document is parsed, so the badges fall back to a
-          clock that started when you first opened the site — reload to get
-          clean numbers.
-        </p>
+        <div className="mt-2 grid gap-x-8 gap-y-2 text-[13px] leading-relaxed text-ink-muted md:grid-cols-2 xl:grid-cols-3">
+          <p>
+            Each panel shows roughly when its markup arrived, measured in the
+            browser from the start of the page load. They are here so the panels
+            can be <strong>compared with each other</strong> — that is the whole
+            job.
+          </p>
+          <p>
+            They are <strong>not</strong> real performance numbers. Not your
+            server&apos;s response time, not time-to-first-byte, and not what a
+            user would perceive as load time. Treat them as an audit aid for
+            this demo, and use the Performance panel or a Core Web Vitals tool
+            if you need figures that mean something outside it.
+          </p>
+          <p className="text-ink-subtle">
+            Read them on a <strong>fresh page load</strong>. After a client
+            navigation no new document is parsed, so the badges fall back to a
+            clock that started when you first opened the site — reload to get
+            clean numbers.
+          </p>
+        </div>
       </div>
 
       <Disclosure
@@ -55,7 +57,7 @@ async function TimingExplainer() {
         label="how it works"
         hint={snippet.file}
       >
-        <div className="max-w-3xl space-y-3 text-[13px] leading-relaxed text-ink-muted">
+        <div className="grid gap-x-8 gap-y-3 text-[13px] leading-relaxed text-ink-muted md:grid-cols-2 xl:grid-cols-3">
           <p>
             An inline <code className="font-mono">&lt;script&gt;</code> sits
             immediately after each badge. It runs while the browser is still
@@ -123,7 +125,7 @@ export default function Home() {
           Demos
         </h2>
 
-        <ul className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="mt-3 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <li>
             <Link
               href="/ppr"
@@ -158,7 +160,7 @@ export default function Home() {
         >
           Tools
         </h2>
-        <ul className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="mt-3 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <li>
             <Link
               href="/invalidate"

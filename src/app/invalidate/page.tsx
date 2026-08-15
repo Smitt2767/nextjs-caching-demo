@@ -22,7 +22,7 @@ function Group({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-full border border-line bg-surface-raised p-5">
+    <div className="border border-line bg-surface-raised p-5">
       <h4 className="text-[15px] font-semibold text-ink">{title}</h4>
       <p className="mt-1 mb-4 text-[13px] leading-relaxed text-ink-muted">
         {hint}
@@ -77,7 +77,7 @@ export default function InvalidatePage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
           <Group
             title="Single entry"
             hint={

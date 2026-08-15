@@ -117,7 +117,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="static"
             title="Pure markup"
@@ -202,7 +202,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="uncached"
             title="No cache"
@@ -319,7 +319,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="private"
             title="use cache: private, around everything"
