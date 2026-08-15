@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.2 (design study; steps 1–3 built) |
-| **Status** | In progress. First measurements recorded in §13.1. |
+| **Version** | 0.3 (design study; steps 1–5 built) |
+| **Status** | In progress. Measurements M1–M5 recorded in §13.1. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -18,9 +18,10 @@
 > that this stack's documentation can be correct and still mislead, because the
 > failure was invisible locally. Every claim below is therefore tagged with where
 > it came from: **[docs]**, **[vendor]**, **[inferred]**, or **[measured]**.
-> Four **[measured]** results are now recorded in §13.1, from steps 1–3. Two of
+> Five **[measured]** results are now recorded in §13.1, from steps 1–5. Two of
 > them (M2, M3) are build-breaking behaviours whose error messages point
-> somewhere other than the cause. Everything else is still unverified.
+> somewhere other than the cause, and one (M5) came from a bug report rather
+> than from anything predicted here. Everything else is still unverified.
 
 ---
 
@@ -71,13 +72,24 @@ perfectly, and the experiment results are silently worthless (§9). This is the
 same class of failure as §5.3 in the companion report: correct-looking code,
 no error, wrong outcome.
 
-**What steps 1–3 have already shown** (§13.1). A flag with no targeting really
-does cost nothing at request time — one read at build, zero per request. And two
+**What steps 1–5 have already shown** (§13.1). A flag with no targeting really
+does cost nothing at request time — one read at build, zero per request. Two
 build-breaking behaviours surfaced that no amount of reading would have
 predicted: a `use cache` scope that throws fails the *build* even when the caller
 catches the error, and a `cacheLife` with `stale` under five minutes makes shell
 content unprerenderable while reporting an error that names something else
-entirely. Both are now guarded in code and recorded as risks F8 and F9.
+entirely. Both are now guarded in code, as risks F8 and F9.
+
+**And one finding that arrived as a bug report rather than a prediction** (M5).
+A flag rendered into the static shell shows its *old* value on first paint and
+corrects itself a moment later, whenever it changed since the shell was built.
+It is not a defect in the flag code — it is what a partial prerender looks like
+when the cached value underneath it has moved. The generalisation is the useful
+part, and it applies well beyond flags: **anything cached into the shell of a
+partially-prerendered route can be stale, and serving it instantly is
+incompatible with it always being current.** Neither `use cache: remote` nor a
+`<Suspense>` boundary changes that; only regenerating the shell, or keeping the
+value out of it with `await io()`, does.
 
 **Recommendation:** proceed, building Tier 1 as the default and Tier 2 for the
 hero slot only. Build the exposure counter described in §11.3 first — it is the
@@ -708,6 +720,7 @@ worked: the number is unarguable and the wrong version looks correct.
 | **F7** | Proxy cost on every request including RSC prefetches | Unknown | Invocation counts on the deployment | Tighten `matcher`; measure before assuming (§13) |
 | **F8** | A `use cache` scope that throws fails the **build**, so an outage at GrowthBook blocks every deploy | High | Only a real outage, or a deliberate bad key | Cached scopes return failure as a value, never throw (§13.1 M2) |
 | **F9** | A `cacheLife` with `stale` under 5 min makes shell content unprerenderable, reported as an unrelated "uncached data" error | Medium | Build failure naming code that did not change | Keep `stale` ≥ 300 on anything in the static shell (§13.1 M3) |
+| **F10** | A flag rendered into the static shell shows its **old** value on first paint and corrects a moment later, whenever it changed since the shell was built | Medium | Visible flash; invisible on a fully static route, which is worse | Invalidate on change; or `await io()` to keep it out of the shell entirely (§13.1 M5) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -833,6 +846,73 @@ read at build, so at present the transport costs nothing per request either way
 `use cache` and must read the ruleset on every request. Claim 9 below is still
 the real test, and it has to run on the deployment.
 
+---
+
+**M5. A mutable value in the static shell flashes when it changes.** **[measured]**
+· *found from a live bug report, not predicted anywhere in this document*
+
+Toggling `catalog-kill-switch` in GrowthBook and reloading without invalidating
+showed the **old** value, then the new one a moment later. Reproduced locally by
+baking a shell that says `ON` while GrowthBook says `false`:
+
+```
+document the server sent:  ON
+value over time:           40ms ON  →  143ms OFF
+final DOM:                 OFF
+```
+
+Response headers name the mechanism:
+
+```
+x-nextjs-prerender: 1
+x-nextjs-postponed: 1
+```
+
+`/flags` is a Partial Prerender, so every request does two things:
+
+1. The **prerendered shell** is sent immediately, carrying whatever the flag was
+   when that shell was last generated.
+2. Because the page has dynamic parts, Next **resumes** the render to fill them.
+   The component re-runs, reads the current ruleset, and React reconciles the
+   result — patching the DOM.
+
+They disagree exactly when the flag changed since the shell was last built,
+which is why invalidating the tag fixes it permanently: that regenerates the
+shell, and both renders agree again.
+
+**Two fixes that do not work**, both worth knowing:
+
+- **`use cache: remote`** changed nothing locally (`ON → OFF` unchanged). Not
+  decidable here — `next start` has no real shared store, so build and runtime
+  are separate memory either way. On Vercel it may let the resume reuse the
+  entry the build wrote, which would make the two renders *consistent* — showing
+  the old value with no flash, rather than showing the new one. Still unverified.
+- **Wrapping it in `<Suspense>`** changed nothing either, and this is the more
+  instructive one. A boundary only contributes a fallback to the shell if its
+  content actually *suspends during prerendering*. The cached read completes at
+  build, so the boundary resolves and its output lands in the shell regardless.
+  **Suspense does not make something request-time.** `await io()` or
+  `connection()` does.
+
+**The general rule, which is not specific to flags.** Any `use cache` value
+rendered into the shell of a partially-prerendered route is a cached value, and
+a cached value can be stale. Serving it instantly and having it always current
+are mutually exclusive:
+
+| Approach | First paint | Correctness | Cost |
+| --- | --- | --- | --- |
+| In the shell, invalidate on change | instant | stale until invalidated | a flash of the old value in that window |
+| `await io()` before the read | fallback | always current | the value is no longer free — it streams |
+| In the shell, never invalidated | instant | stale indefinitely | silently wrong |
+
+This project keeps the first row and closes the window with the `/invalidate`
+button (a webhook would shrink it to seconds). The flash is the honest, visible
+cost of caching something mutable, which is worth showing rather than hiding.
+
+**Scope.** Only visible because the route has dynamic parts and therefore
+resumes at all. A fully static route would serve the stale shell with no flash —
+wrong for longer, and with nothing on screen to reveal it.
+
 ### 13.2 Claims still to verify
 
 The following must be measured on the deployed application, using the
@@ -900,3 +980,4 @@ Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
 | --- | --- | --- |
 | 0.1 | 15 Aug 2026 | Initial design study. No code, no measurements. |
 | 0.2 | 15 Aug 2026 | Steps 1–3 built. §13 split into measured findings (M1–M4) and remaining claims; risks F8 and F9 added from M2 and M3. |
+| 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |
