@@ -54,7 +54,7 @@ export function TagButtons({ tags }: { tags: TagDescriptor[] }) {
               disabled={pending}
               title={t.effect}
               data-testid={`invalidate-${t.tag}`}
-              className="min-h-11 cursor-pointer rounded-lg border border-line bg-surface px-3 font-mono text-[11px] text-ink transition-colors hover:border-ink-subtle disabled:opacity-50"
+              className="min-h-11 cursor-pointer border border-line bg-surface px-3 font-mono text-[11px] text-ink hover:border-ink-subtle disabled:opacity-50"
             >
               {t.label}
             </button>
@@ -80,7 +80,7 @@ export function RevalidatePathButton() {
           type="submit"
           disabled={pending}
           data-testid="invalidate-ppr-path"
-          className="min-h-11 cursor-pointer rounded-lg border-2 border-dashed border-red-500/60 bg-red-500/5 px-4 font-mono text-[11px] font-bold text-ink transition-colors hover:border-red-500 disabled:opacity-50"
+          className="min-h-11 cursor-pointer border border-red-500/50 bg-red-500/5 px-4 font-mono text-[11px] font-bold text-ink hover:border-red-500 disabled:opacity-50"
         >
           revalidatePath(&quot;/ppr&quot;)
         </button>

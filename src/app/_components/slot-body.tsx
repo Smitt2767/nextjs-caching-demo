@@ -22,7 +22,7 @@ export function StatusLine({
   // here is weight, not colour.
   return (
     <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px]">
-      <span className="rounded bg-ink px-1.5 py-0.5 font-bold text-surface-raised">
+      <span className="bg-ink px-1.5 py-0.5 font-bold text-surface-raised">
         <ArrivalTimer id={timerId} />
       </span>
       {/* suppressHydrationWarning: a status line may carry a cache timestamp,
@@ -98,17 +98,17 @@ export function SlotSkeleton({
   return (
     <div data-testid={testId}>
       <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
-        <span className="rounded bg-ink/10 px-1.5 py-0.5 text-ink-subtle dark:bg-white/10">
+        <span className="bg-ink/10 px-1.5 py-0.5 text-ink-subtle dark:bg-white/10">
           waiting ≤{COUNTRY_FETCH_DELAY_MS}ms
         </span>
       </div>
-      <div className="animate-pulse space-y-2" aria-hidden="true">
-        <div className={`h-3 w-32 rounded ${bar}`} />
-        <div className={`h-4 w-44 rounded ${bar}`} />
+      <div className="space-y-2" aria-hidden="true">
+        <div className={`h-3 w-32 ${bar}`} />
+        <div className={`h-4 w-44 ${bar}`} />
         <div className="space-y-2 pt-2">
-          <div className={`h-3 rounded ${bar}`} />
-          <div className={`h-3 rounded ${bar}`} />
-          <div className={`h-3 w-2/3 rounded ${bar}`} />
+          <div className={`h-3 ${bar}`} />
+          <div className={`h-3 ${bar}`} />
+          <div className={`h-3 w-2/3 ${bar}`} />
         </div>
       </div>
       <span className="sr-only">Loading country content…</span>

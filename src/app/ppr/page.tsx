@@ -42,14 +42,14 @@ function SectionHeading({
   children: React.ReactNode;
 }) {
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-subtle">
         {eyebrow}
       </p>
-      <h2 className="mt-1 text-xl font-semibold tracking-tight text-ink">
+      <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
         {title}
       </h2>
-      <p className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
         {children}
       </p>
     </div>
@@ -59,26 +59,29 @@ function SectionHeading({
 export const instant = false;
 
 export default function PprDemo() {
+  // Full width with small padding: the grids should use the whole screen so as
+  // many cards as possible are visible without scrolling. Prose blocks keep
+  // their own max-width, since long lines are hard to read.
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6 lg:py-14">
-      <header data-testid="ppr-shell" className="max-w-2xl">
+    <main className="w-full flex-1 px-4 py-5">
+      <header data-testid="ppr-shell">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle transition-colors hover:text-ink"
+          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle hover:text-ink"
         >
           ← all demos
         </Link>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           What&apos;s in the shell, what streams in
         </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
+        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-muted">
           Eight slots on one page. Each card&apos;s frame, title and notes are
           prerendered — only the region inside it can stream. Every slot reports{" "}
           <span className="font-mono text-ink">rendered @Nms</span>: when that
           content actually reached the screen.
         </p>
 
-        <dl className="mt-6 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           {(
             [
               ["bg-emerald-500", "Static", "in the prerendered shell"],
@@ -95,7 +98,7 @@ export default function PprDemo() {
             <div key={term} className="flex items-baseline gap-2">
               <span
                 aria-hidden="true"
-                className={`h-2 w-2 shrink-0 translate-y-px rounded-full ${dot}`}
+                className={`h-2 w-2 shrink-0 translate-y-px ${dot}`}
               />
               <dt className="font-mono text-[11px] font-bold text-ink">
                 {term}
@@ -106,7 +109,7 @@ export default function PprDemo() {
         </dl>
       </header>
 
-      <section className="mt-12" aria-labelledby="shell-heading">
+      <section className="mt-7" aria-labelledby="shell-heading">
         <div id="shell-heading">
           <SectionHeading eyebrow="Group 1" title="Prerendered into the shell">
             None of these read request-time data, so all three are in the HTML
@@ -114,7 +117,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="static"
             title="Pure markup"
@@ -187,7 +190,7 @@ export default function PprDemo() {
         </div>
       </section>
 
-      <section className="mt-14" aria-labelledby="country-heading">
+      <section className="mt-8" aria-labelledby="country-heading">
         <div id="country-heading">
           <SectionHeading
             eyebrow="Group 2"
@@ -199,7 +202,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="uncached"
             title="No cache"
@@ -301,7 +304,7 @@ export default function PprDemo() {
         </div>
       </section>
 
-      <section className="mt-14" aria-labelledby="private-heading">
+      <section className="mt-8" aria-labelledby="private-heading">
         <div id="private-heading">
           <SectionHeading
             eyebrow="Group 3"
@@ -316,7 +319,7 @@ export default function PprDemo() {
           </SectionHeading>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SlotCard
             variant="private"
             title="use cache: private, around everything"
@@ -399,7 +402,7 @@ export default function PprDemo() {
         </div>
       </section>
 
-      <p className="mt-12 max-w-2xl border-t border-line pt-5 font-mono text-[11px] leading-relaxed text-ink-subtle">
+      <p className="mt-8 max-w-3xl border-t border-line pt-4 font-mono text-[11px] leading-relaxed text-ink-subtle">
         Every wrapper on this page is in the initial HTML response — open
         DevTools → Network → the <span className="text-ink">/ppr</span> document
         and read it. Only the slot bodies arrive later.{" "}

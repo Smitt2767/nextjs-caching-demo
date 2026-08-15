@@ -17,9 +17,7 @@ function Chevron({ open }: { open: boolean }) {
       strokeWidth="2.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`shrink-0 transition-transform duration-200 ${
-        open ? "rotate-90" : ""
-      }`}
+      className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
     >
       <path d="m9 18 6-6-6-6" />
     </svg>
@@ -59,7 +57,7 @@ export function Disclosure({
         aria-controls={panelId}
         data-testid={testId}
         // min-h-11 == 44px, the minimum comfortable touch target.
-        className="flex min-h-11 w-full cursor-pointer items-center gap-2 px-4 text-left font-mono text-[11px] text-ink-subtle transition-colors duration-150 hover:bg-black/[.04] hover:text-ink dark:hover:bg-white/[.05]"
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 px-4 text-left font-mono text-[11px] text-ink-subtle hover:bg-black/[.04] hover:text-ink dark:hover:bg-white/[.05]"
       >
         <Chevron open={open} />
         {/* The label never wraps; the file path takes the truncation instead,

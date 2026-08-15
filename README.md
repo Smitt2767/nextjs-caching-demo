@@ -340,23 +340,34 @@ impure).
 
 ## Design notes
 
-- **Layout** is a responsive grid: one column on mobile, three per group from
-  `lg` up, so the three country strategies sit side by side for comparison.
-- **Colour encodes strategy** (green static, red uncached, amber data-cached,
-  violet component-cached) but is never the only cue — each card also states
-  its strategy in text, so the meaning survives greyscale and colour-blindness.
+Direction: **Minimalism / Swiss** — grid-based, high contrast, no decoration
+that does not carry meaning. Chosen with the `ui-ux-pro-max` skill, whose
+design variables for this style specify `border-radius: 0` and `shadow: none`.
+
+- **Square corners everywhere.** No rounding on cards, buttons, chips or code
+  wells.
+- **No animation.** Not even the loading skeleton pulses. The page exists to
+  measure when content appears; motion would both ship extra work and blur what
+  is being observed.
+- **Neutral greys, not slate.** The strategy colours (emerald, red, amber,
+  violet, sky) are the only hues on the page; a tinted background competed with
+  them.
+- **Full width, small padding.** The grids use the whole screen so more cards
+  are visible without scrolling. Prose blocks keep their own `max-width`,
+  because long lines are hard to read.
+- **A solid bar down the left edge** marks each card's strategy, instead of
+  outlining all four sides. Colour is never the only cue — every card also
+  states its strategy in text.
+- **Three columns on desktop**, two on tablet, one on mobile, across every
+  page. Sections grow downward as demos and tools are added.
 - **Type** is IBM Plex Sans with JetBrains Mono for timings, tags and code,
   loaded through `next/font` so they self-host with no layout shift.
-- **Surfaces are tokens** (`--surface`, `--ink`, `--line`, …) defined once in
-  `globals.css` and switched on `prefers-color-scheme`. Muted text is 7.2:1 on
-  light and 9.8:1 on dark, so it clears WCAG AA comfortably.
-- **Motion is deliberately near-zero.** The only animation is the skeleton
-  pulse, which signals "still loading", and it stops under
-  `prefers-reduced-motion`. A scroll-reveal library was the one design-system
-  suggestion I turned down: this page exists to measure when content paints,
-  and animating things in would both ship client JS and corrupt the numbers.
-- Toggles are 44px tall, keyboard-operable, carry `aria-expanded` /
-  `aria-controls`, and use an inline SVG chevron rather than a text glyph.
+
+Contrast: muted text is 7.5:1 on light and 12.6:1 on dark; subtle text is 4.7:1
+and 7.3:1. All clear WCAG AA.
+
+Deviation from the style guidance: it suggests subtle hover transitions of
+200–250ms. We ship none, because the brief was no animation.
 
 ## The code snippets
 

@@ -35,7 +35,7 @@ export function CountrySwitcher() {
           onClick={() => choose(code)}
           disabled={isPending}
           data-testid={`country-${code}`}
-          className="rounded border border-zinc-300 px-3 py-1 font-mono text-xs font-medium transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="border border-zinc-300 px-3 py-1 font-mono text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
         >
           {LABELS[code]}
         </button>

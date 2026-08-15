@@ -22,7 +22,7 @@ function Group({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-surface-raised p-5">
+    <div className="h-full border border-line bg-surface-raised p-5">
       <h4 className="text-[15px] font-semibold text-ink">{title}</h4>
       <p className="mt-1 mb-4 text-[13px] leading-relaxed text-ink-muted">
         {hint}
@@ -40,25 +40,25 @@ function Group({
  */
 export default function InvalidatePage() {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:py-14">
+    <main className="flex w-full flex-1 flex-col gap-6 px-4 py-5">
       <header data-testid="invalidate-shell">
         <Link
           href="/"
-          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle transition-colors hover:text-ink"
+          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle hover:text-ink"
         >
           ← all demos
         </Link>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           Invalidate caches
         </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
+        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-muted">
           Expire a single cache entry by tag, or throw away everything on a
           route. Then open the demo and watch which panels pay for their work
           again — the ones you did not invalidate keep their frozen timestamps.
         </p>
       </header>
 
-      <section aria-labelledby="ppr-heading" className="flex flex-col gap-4">
+      <section aria-labelledby="ppr-heading" className="flex flex-col gap-3">
         <div>
           <h2
             id="ppr-heading"
@@ -77,59 +77,61 @@ export default function InvalidatePage() {
           </p>
         </div>
 
-        <Group
-          title="Single entry"
-          hint={
-            <>
-              <code className="font-mono">updateTag(tag)</code> expires one
-              entry immediately, so the next request waits for fresh data rather
-              than being served the stale copy. Everything else on the page
-              stays cached. Hover a button to see what it recomputes.
-            </>
-          }
-        >
-          <TagButtons tags={SHARED_TAGS} />
-        </Group>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Group
+            title="Single entry"
+            hint={
+              <>
+                <code className="font-mono">updateTag(tag)</code> expires one
+                entry immediately, so the next request waits for fresh data
+                rather than being served the stale copy. Everything else on the
+                page stays cached. Hover a button to see what it recomputes.
+              </>
+            }
+          >
+            <TagButtons tags={SHARED_TAGS} />
+          </Group>
 
-        <Group
-          title="Per country"
-          hint={
-            <>
-              The country caches are keyed by code, so each country has its own
-              entries. Expiring <code className="font-mono">IN</code> leaves{" "}
-              <code className="font-mono">US</code> and{" "}
-              <code className="font-mono">UK</code> untouched — switch country
-              on the demo to see it.
-            </>
-          }
-        >
-          <div className="space-y-3">
-            {COUNTRY_TAGS.map(({ code, tags }) => (
-              <div key={code}>
-                <p className="mb-1.5 font-mono text-[11px] font-bold text-ink">
-                  {code}
-                </p>
-                <TagButtons tags={tags} />
-              </div>
-            ))}
-          </div>
-        </Group>
+          <Group
+            title="Per country"
+            hint={
+              <>
+                The country caches are keyed by code, so each country has its
+                own entries. Expiring <code className="font-mono">IN</code>{" "}
+                leaves <code className="font-mono">US</code> and{" "}
+                <code className="font-mono">UK</code> untouched — switch country
+                on the demo to see it.
+              </>
+            }
+          >
+            <div className="space-y-3">
+              {COUNTRY_TAGS.map(({ code, tags }) => (
+                <div key={code}>
+                  <p className="mb-1.5 font-mono text-[11px] font-bold text-ink">
+                    {code}
+                  </p>
+                  <TagButtons tags={tags} />
+                </div>
+              ))}
+            </div>
+          </Group>
 
-        <Group
-          title="The whole route"
-          hint={
-            <>
-              <code className="font-mono">
-                revalidatePath(&quot;/ppr&quot;)
-              </code>{" "}
-              drops every cached entry the route can reach, including ones you
-              did not name. Per the docs it currently also refreshes other
-              previously visited pages when you navigate back to them.
-            </>
-          }
-        >
-          <RevalidatePathButton />
-        </Group>
+          <Group
+            title="The whole route"
+            hint={
+              <>
+                <code className="font-mono">
+                  revalidatePath(&quot;/ppr&quot;)
+                </code>{" "}
+                drops every cached entry the route can reach, including ones you
+                did not name. Per the docs it currently also refreshes other
+                previously visited pages when you navigate back to them.
+              </>
+            }
+          >
+            <RevalidatePathButton />
+          </Group>
+        </div>
 
         <p className="text-[13px] leading-relaxed text-ink-subtle">
           One thing none of these touch: the sky{" "}

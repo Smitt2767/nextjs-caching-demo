@@ -7,26 +7,31 @@
  * strategy a card demonstrates — and is always paired with a text label.
  */
 :root {
-  --surface: #f8fafc; /* page background */
+  --surface: #fafafa; /* page background */
   --surface-raised: #ffffff; /* cards */
-  --surface-sunken: #f1f5f9; /* code wells, skeletons */
-  --ink: #0f172a; /* primary text */
-  --ink-muted: #475569; /* secondary text — 7.2:1 on --surface */
-  --ink-subtle: #64748b; /* labels — 4.8:1 on --surface */
-  --line: #e2e8f0; /* borders */
-  --ring: #0f172a; /* focus ring */
+  --surface-sunken: #f5f5f5; /* code wells, skeletons */
+  --ink: #0a0a0a; /* primary text */
+  --ink-muted: #525252; /* secondary text — 7.5:1 on --surface-raised */
+  --ink-subtle: #737373; /* labels — 4.7:1 on --surface-raised */
+  --line: #e5e5e5; /* borders */
+  --ring: #0a0a0a; /* focus ring */
 }
 
+/*
+ * Neutral greys, not slate: the strategy colours (emerald / red / amber /
+ * violet / sky) are the only hues on the page, and a tinted background
+ * competes with them.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #0f172a;
-    --surface-raised: #1b2336;
-    --surface-sunken: #131a2b;
-    --ink: #f8fafc;
-    --ink-muted: #cbd5e1; /* 9.8:1 on --surface-raised */
-    --ink-subtle: #94a3b8; /* 5.6:1 on --surface-raised */
-    --line: #2c3852;
-    --ring: #f8fafc;
+    --surface: #0a0a0a;
+    --surface-raised: #141414;
+    --surface-sunken: #0f0f0f;
+    --ink: #fafafa;
+    --ink-muted: #d4d4d4; /* 12.6:1 on --surface-raised */
+    --ink-subtle: #a3a3a3; /* 7.3:1 on --surface-raised */
+    --line: #2a2a2a;
+    --ring: #fafafa;
   }
 }
 

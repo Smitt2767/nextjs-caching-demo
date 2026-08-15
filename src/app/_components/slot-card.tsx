@@ -13,38 +13,37 @@ export type SlotVariant =
 const VARIANTS = {
   static: {
     label: "STATIC",
-    frame: "border-emerald-500/60",
+    edge: "border-emerald-500/35",
     chip: "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950",
     rail: "bg-emerald-500",
   },
   uncached: {
     label: "UNCACHED",
-    frame: "border-red-500/60 border-solid",
+    edge: "border-red-500/35",
     chip: "bg-red-600 text-white dark:bg-red-500 dark:text-red-950",
     rail: "bg-red-500",
   },
   "data-cached": {
     label: "DATA CACHED",
-    frame: "border-amber-500/60",
+    edge: "border-amber-500/35",
     chip: "bg-amber-600 text-white dark:bg-amber-500 dark:text-amber-950",
     rail: "bg-amber-500",
   },
   component: {
     label: "COMPONENT CACHED",
-    frame: "border-violet-500/60",
+    edge: "border-violet-500/35",
     chip: "bg-violet-600 text-white dark:bg-violet-500 dark:text-violet-950",
     rail: "bg-violet-500",
   },
-  // Sky — cached in the browser rather than on the server.
   private: {
     label: "PRIVATE · BROWSER",
-    frame: "border-sky-500/60",
+    edge: "border-sky-500/35",
     chip: "bg-sky-600 text-white dark:bg-sky-500 dark:text-sky-950",
     rail: "bg-sky-500",
   },
 } satisfies Record<
   SlotVariant,
-  { label: string; frame: string; chip: string; rail: string }
+  { label: string; edge: string; chip: string; rail: string }
 >;
 
 /**
@@ -85,16 +84,19 @@ export async function SlotCard({
       data-testid={`card-${snippetId}`}
       data-variant={variant}
       aria-label={title}
-      className={`flex flex-col overflow-hidden rounded-xl border-2 border-dashed bg-surface-raised ${styles.frame}`}
+      className={`relative flex flex-col overflow-hidden border bg-surface-raised ${styles.edge}`}
     >
-      <header className="flex gap-3 p-4">
-        <span
-          aria-hidden="true"
-          className={`mt-0.5 w-1 shrink-0 self-stretch rounded-full ${styles.rail}`}
-        />
+      {/* Solid bar down the left edge instead of a dashed frame: the strategy
+          stays scannable without decorating every side of the card. */}
+      <span
+        aria-hidden="true"
+        className={`absolute inset-y-0 left-0 w-[3px] ${styles.rail}`}
+      />
+
+      <header className="p-4 pl-5">
         <div className="min-w-0 flex-1">
           <span
-            className={`inline-block rounded px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wide ${styles.chip}`}
+            className={`inline-block px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${styles.chip}`}
           >
             {styles.label}
           </span>
@@ -108,7 +110,7 @@ export async function SlotCard({
       </header>
 
       {/* The only dynamic region. Everything above and below is prerendered. */}
-      <div className="flex-1 px-4 pb-4">{children}</div>
+      <div className="flex-1 px-4 pb-4 pl-5">{children}</div>
 
       <div className="mt-auto">
         <Disclosure
@@ -127,7 +129,7 @@ export async function SlotCard({
           <p className="mb-2 font-mono text-[11px] text-ink-subtle">
             {snippet.point}
           </p>
-          <div className="overflow-x-auto rounded-lg border border-line bg-surface-sunken">
+          <div className="overflow-x-auto border border-line bg-surface-sunken">
             {/* Highlighted server-side by Shiki; the input is a constant in
                 the repo, never user input. */}
             <div dangerouslySetInnerHTML={{ __html: html }} />

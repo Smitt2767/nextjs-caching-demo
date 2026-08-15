@@ -19,12 +19,12 @@ async function TimingExplainer() {
   return (
     <section
       data-testid="timing-explainer"
-      className="overflow-hidden rounded-xl border border-line bg-surface-raised"
+      className="border border-line bg-surface-raised"
     >
-      <div className="p-5">
+      <div className="max-w-3xl p-5">
         <h2 className="text-base font-semibold text-ink">
           About the{" "}
-          <span className="rounded bg-ink px-1.5 py-0.5 font-mono text-[11px] font-bold text-surface-raised">
+          <span className="bg-ink px-1.5 py-0.5 font-mono text-[11px] font-bold text-surface-raised">
             ~164ms
           </span>{" "}
           badges
@@ -55,7 +55,7 @@ async function TimingExplainer() {
         label="how it works"
         hint={snippet.file}
       >
-        <div className="space-y-3 text-[13px] leading-relaxed text-ink-muted">
+        <div className="max-w-3xl space-y-3 text-[13px] leading-relaxed text-ink-muted">
           <p>
             An inline <code className="font-mono">&lt;script&gt;</code> sits
             immediately after each badge. It runs while the browser is still
@@ -81,7 +81,7 @@ async function TimingExplainer() {
         <p className="mt-4 mb-2 font-mono text-[11px] text-ink-subtle">
           {snippet.point}
         </p>
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface-sunken">
+        <div className="overflow-x-auto border border-line bg-surface-sunken">
           {/* Highlighted server-side by Shiki; the input is a constant in the
               repo, never user input. */}
           <div dangerouslySetInnerHTML={{ __html: html }} />
@@ -100,12 +100,12 @@ export default function Home() {
   // No background of its own: `body` paints the surface token, so setting a
   // second colour here produced a visible seam where this element ended.
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:py-14">
+    <main className="flex w-full flex-1 flex-col gap-6 px-4 py-5">
       <header data-testid="home-shell">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           Next.js caching demos
         </h1>
-        <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-muted">
+        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-muted">
           Small, self-contained pages that show what Next.js prerenders and what
           it defers to request time.
         </p>
@@ -123,14 +123,18 @@ export default function Home() {
           Demos
         </h2>
 
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <li>
             <Link
               href="/ppr"
               data-testid="ppr-link"
-              className="block rounded-xl border-2 border-dashed border-emerald-500/60 bg-surface-raised p-5 transition-colors hover:border-emerald-500"
+              className="relative block border border-line bg-surface-raised p-5 pl-6 hover:border-ink-subtle"
             >
-              <span className="font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-[3px] bg-emerald-500"
+              />
+              <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
                 /ppr
               </span>
               <h3 className="mt-1 text-xl font-semibold text-ink">
@@ -154,14 +158,18 @@ export default function Home() {
         >
           Tools
         </h2>
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <li>
             <Link
               href="/invalidate"
               data-testid="invalidate-link"
-              className="block rounded-xl border border-line bg-surface-raised p-5 transition-colors hover:border-ink-subtle"
+              className="relative block border border-line bg-surface-raised p-5 pl-6 hover:border-ink-subtle"
             >
-              <span className="font-mono text-[11px] font-bold text-ink-subtle">
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-[3px] bg-ink-subtle"
+              />
+              <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-ink-subtle">
                 /invalidate
               </span>
               <h3 className="mt-1 text-xl font-semibold text-ink">
