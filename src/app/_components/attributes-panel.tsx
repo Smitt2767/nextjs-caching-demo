@@ -45,7 +45,9 @@ export async function AttributesPanel() {
         </span>
       </div>
 
-      <dl className="divide-y divide-line border-y border-line">
+      {/* `border-t` only: `divide-y` already draws the rules between rows, so a
+          bottom border would double up with the card's own edge. */}
+      <dl className="divide-y divide-line border-t border-line">
         {ROWS.map(({ key, note }) => (
           <div
             key={key}
@@ -83,7 +85,7 @@ export function AttributesSkeleton() {
         </span>
       </div>
       <div
-        className="divide-y divide-line border-y border-line"
+        className="divide-y divide-line border-t border-line"
         aria-hidden="true"
       >
         {ROWS.map(({ key }) => (
