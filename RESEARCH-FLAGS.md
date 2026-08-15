@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 1.0 (steps 1–9 built; step 10 measured on Vercel) |
-| **Status** | In progress. Measurements M1–M13 recorded in §13.1; M12 and M13 are the deployed run. |
+| **Version** | 1.2 (steps 1–11 built; step 10 measured on Vercel) |
+| **Status** | In progress. Measurements M1–M14 recorded in §13.1; M12 and M13 are the deployed run. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -808,6 +808,7 @@ order:
 | **F10** | A flag rendered into the static shell shows its **old** value on first paint and corrects a moment later, whenever it changed since the shell was built | Medium | Visible flash; invisible on a fully static route, which is worse | Invalidate on change; or `await io()` to keep it out of the shell entirely (§13.1 M5) |
 | **F11** | A `Request` hoisted out of `flag(request)` to a module constant memoises the flag for the lifetime of the server process, outliving every invalidation | Medium | Nothing automated; the value simply stops changing | Construct the stand-in per call. Hoisting it looks like an optimisation and reviews like one (§13.1 M8) |
 | **F12** | A visitor-specific value passed as a prop into a variant-keyed cached component; one entry per variant silently becomes one per visitor | High | Nothing automated. Cache hit rates stay plausible; only the entry count reveals it | Pass decisions in, never identities. `cookies()`/`headers()` are blocked inside the scope but props are not (§13.1 M10) |
+| **F13** | A `use cache` or `remote` scope **awaited** inside `use cache: private`; passes every local check and fails on deployment | High | Deployed measurement only — the local build, runtime and e2e suite all pass | Evaluate outside the private scope and pass the finished value in; return elements rather than awaiting them (§13.1 M14, RND-NEXT-CACHE-001 §5.3a) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -1378,85 +1379,82 @@ That is the ordinary per-environment-secret trade-off. Confirming the 200 path
 on the deployment needs a proof minted with the deployed secret, which is the
 Toolbar's job.
 
-### 13.2 Claims still to verify
+**M14. Awaiting a `use cache` scope inside `use cache: private` builds, runs,
+passes every local test, and fails on deployment.** **[measured locally;
+deployed failure reported]** · *the §5.3 trap, walked into deliberately-looking*
 
-The following must be measured on the deployed application, using the
-six-request curl loop already documented in `README.md`.
+Step 11's flag is decided per person — forced on for a list of individual ids —
+so it belongs in `use cache: private`, the only per-browser scope and the only
+one permitted to read `cookies()`. The obvious shape puts the whole job inside
+it:
 
-| # | Claim | Source | How to test |
-| --- | --- | --- | --- |
-| 1 | Tracking inside a cached scope fires once per entry, not per request | **answered — M11** | Measured 3/50, and 3/100 on a second run. Still worth repeating on the deployment, where the counters are instance-local |
-| 2 | The `fetch` Data Cache still functions under `cacheComponents: true` | docs, ambiguous | Tag a payload fetch, measure hit rate on the deployment |
-| 3 | The `fetch` Data Cache survives a deploy | docs | Measure across two consecutive deploys |
-| 4 | `use cache: remote` does **not** survive a deploy | **answered — M13** | Confirmed: all three variant renders were discarded, and re-warmed to three entries |
-| 5 | Proxy runs on `<Link>` prefetch/RSC requests, and what it costs | inferred | Invocation counts with and without prefetch |
-| 6 | An unlisted `[code]` really serves an instant App Shell, then upgrades | docs · **half answered** | A probe build emitted `◐ /precompute-probe/[code]` beside the `○` permutations, so the shell exists. The timing and upgrade behaviour are still unmeasured |
-| 7 | `next/root-params` narrows the cache key to `[code]` alone | docs | Two routes sharing a cached component under different deeper params |
-| 8 | Flags SDK precompute composes with root params at all | inferred | Build `app/[code]/layout.tsx` as the root layout |
-| 9 | Edge Config vs `use cache: remote` vs GrowthBook CDN read latency | vendor | Three-way timing on the deployment |
-| 10 | Payload cache behaviour on cold start after a deploy (stampede risk) | inferred | Deploy, then fire concurrent requests immediately |
+```tsx
+export async function EntitlementPanel() {
+  "use cache: private";
+  const { attributes } = await readAttributes();   // cookies() — legal here
+  const entitled = await betaEntitlement();        // → getRuleset(), "use cache"
+  ...
+}
+```
 
-Claim 1 is answered (M11). Claim 2 is the remaining blocker; the rest can
-proceed in parallel with the build.
+**This was written, built, run and tested locally, and every check passed.** The
+build succeeded, `/flags` stayed `◐`, two visitor ids returned two different
+answers, and 88 e2e tests were green. On the strength of that it was recorded
+here as a finding: that plain `use cache` nests inside `private` even though
+`remote` does not.
 
----
+**That finding was wrong**, and RND-NEXT-CACHE-001 §5.3a had already said so:
 
-## 14. Open questions
+> `remote` inside `private` is permitted when the element is **returned, not
+> awaited** … Awaiting it there would be genuine nesting and is expected to
+> fail.
 
-- **Q1.** Can the decision space be derived from the GrowthBook payload, so it
-  stays correct as flags change? Partly answered and not encouragingly:
-  `generatePermutations` reads the `options` declared on each `flag()` in code,
-  so adding a variation in GrowthBook does **not** widen the permutation set —
-  the new value falls outside it and the visitor lands on an unbuilt code. The
-  open part is whether the option lists can be generated from the payload at
-  build time rather than hand-maintained.
-- **Q2.** What is the actual per-request cost of proxy on Vercel at our traffic,
-  and does Tier 2 pay for itself against Tier 1's streaming?
-- **Q3.** How do sticky buckets interact with precompute? If the sticky assignment
-  is in a cookie and the code is in the URL, which wins on a mismatch?
-- **Q4.** Can Tier 0 and Tier 2 share one payload fetch, or does proxy's copy
-  necessarily diverge from the page's?
-- **Q5.** ~~What happens to in-flight experiments across a deploy?~~
-  **Answered (M13): nothing.** The renders are discarded but the assignments are
-  not, because an assignment is derived by hashing the visitor id rather than
-  stored. A deploy costs one re-render per variant and reshuffles no one.
-- **Q6.** Is there a clean way to run Tier 1 and Tier 2 on the same page — hero
-  precomputed, everything below streamed — without two flag groups fighting?
+`await betaEntitlement()` reaches `getRuleset()`, a `use cache` scope. Awaiting
+it from inside a private one is genuine nesting by that definition, and it does
+not survive deployment.
 
----
+**The lesson is the one this project keeps relearning**, and it is worth stating
+plainly because the failure mode was not a subtle wrong number — it was a green
+local suite endorsing a shape a companion document had already flagged as
+prohibited. Local success is not evidence about serverless. It was not evidence
+in §5.3, it was not evidence in M7, and it was not evidence here.
 
-## 15. References
+**The correct shape** follows §5.3a: evaluate outside, where nothing is nested,
+and let the private scope hold only what is genuinely per-person.
 
-- `node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-cache.md`
-  — cache keys, root params in cache keys
-- `.../04-functions/io.md` — new in 16.3; the `new Date()` prerender hazard
-- `.../04-functions/next-root-params.md` — root params, cache-key scoping
-- `.../04-functions/revalidateTag.md`, `updateTag.md` — invalidation semantics
-- `.../03-file-conventions/proxy.md` — Node.js runtime, execution order, RSC rewrites
-- `.../02-guides/incremental-static-regeneration-cache-components.md` — App Shells for unlisted params
-- `.../02-guides/migrating-to-cache-components.md` §"fetch cache options" — the persistence comparison
-- [Flags SDK — Precompute](https://flags-sdk.dev/frameworks/next/precompute)
-- [Flags SDK — GrowthBook provider](https://flags-sdk.dev/providers/growthbook)
-- [`vercel/flags` adapter-growthbook](https://github.com/vercel/flags/tree/main/packages/adapter-growthbook)
-- [GrowthBook — Next.js App Router guide](https://docs.growthbook.io/guide/nextjs-app-router)
-- [GrowthBook — Node.js SDK](https://docs.growthbook.io/lib/node)
-- [GrowthBook — Next.js SDK](https://docs.growthbook.io/lib/nextjs)
-- [Aurora Scharff — The Precompute Pattern](https://aurorascharff.no/posts/the-precompute-pattern-encoding-dynamic-data-into-urls-in-nextjs/)
-- Deployment under test: `https://nextjs-caching-experiments.vercel.app`
+```tsx
+export async function EntitlementPanel() {
+  const { attributes } = await readAttributes();
+  const entitled = await betaEntitlement();          // uncached, per request
+  return <EntitlementBody entitled={entitled} visitorId={attributes.id} />;
+}
 
----
+async function EntitlementBody({ entitled, visitorId }) {
+  "use cache: private";                              // renders only
+  cacheLife({ stale: 300 });
+  ...
+}
+```
 
-## 16. Revision history
+Both props are facts about one person and they form the cache key, which is safe
+**only** because the cache is private. The same key in a shared scope would
+serve one visitor's entitlement to whoever landed on that entry next.
 
-| Version | Date | Change |
-| --- | --- | --- |
-| 0.1 | 15 Aug 2026 | Initial design study. No code, no measurements. |
-| 0.2 | 15 Aug 2026 | Steps 1–3 built. §13 split into measured findings (M1–M4) and remaining claims; risks F8 and F9 added from M2 and M3. |
-| 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |
-| 0.4 | 15 Aug 2026 | Step 6 built; Flags SDK integrated alongside the existing path. M6 (an SDK flag cannot be in the shell) and M7 (the stock adapter reads the ruleset once per request) added. |
-| 0.5 | 15 Aug 2026 | Step 7: every flag moved onto the SDK, including the prerendered one. M8 (a reused `Request` memoises for the process lifetime) and M9 (the stock adapter cannot be prerendered at all) added. |
-| 1.0 | 15 Aug 2026 | `FLAGS_SECRET` deployed; the redeploy doubled as the survive-a-deploy check. M13 added — every render discarded, every assignment kept — answering §13.2 claim 4 and §14 Q5. |
-| 0.9 | 15 Aug 2026 | Step 10: everything re-measured on Vercel. M12 added — eight invocation ids against three render timestamps settles §5.3 for this app, M10 and M11 hold unchanged, and `FLAGS_SECRET` is found missing from the deployment, which blocks step 12. |
-| 0.8 | 15 Aug 2026 | Step 9 built: the exposure counter. M11 added — 3 exposures against 50 visitors, and 3 against 100 on a second run — answering §13.2 claim 1, the one this document called blocking. |
-| 0.7 | 15 Aug 2026 | Step 8 built: the rendered variant cached by variant. M10 added — 12 requests across 3 variants produced 3 renders — with risk F12 for the prop-shaped leak that would undo it. |
-| 0.6 | 15 Aug 2026 | Rewritten rather than amended. §1 and §11 restated from the current position instead of carrying three rounds of "superseded by" notes; §11.2 replaced with the route structure actually built; risk F11 added from M8. |
+**Verified with a live rule**, two ids in the forced-value list:
+
+```
+55cc9438-ebf9-4073-b612-ad389cd3b4d3   GRANTED
+9db2312f-fd0f-4748-97fb-7c359ab92f7b   GRANTED
+some-other-visitor                     NOT GRANTED
+```
+
+**Provenance, stated precisely.** The local behaviour above is measured. The
+deployed failure is **reported rather than reproduced here** — the corrected
+code was never deployed in its broken form — and is consistent with §5.3a's
+prediction. Re-measure on the next deployment.
+
+**Operational note.** Before the rule was published the feature was already in
+the payload as `{"defaultValue": false}` — created, enabled and completely
+inert. GrowthBook saves a feature immediately but holds **rule** edits as an
+unpublished draft, so a flag can be live, readable and do nothing.
+

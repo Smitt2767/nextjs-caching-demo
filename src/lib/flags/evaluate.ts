@@ -37,6 +37,7 @@ export const FLAG_DEFAULTS = {
   "catalog-kill-switch": true,
   "pricing-badge": false,
   "hero-copy": "control",
+  "beta-entitlement": false,
 } as const;
 
 export type FlagKey = keyof typeof FLAG_DEFAULTS;

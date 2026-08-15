@@ -12,7 +12,7 @@ shaped this way. You don't need it to follow along.
 
 ## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.** Step 4 landed as a button rather than a
+**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11.** Step 4 landed as a button rather than a
 webhook — the free plan has no webhook slot to spare. Findings are in
 `RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
 reading first.
@@ -29,7 +29,7 @@ reading first.
 | 8 | Cache the variant | no | ✅ |
 | 9 | The exposure counter | no | ✅ |
 | 10 | Deploy and measure on Vercel | no | ✅ |
-| 11 | Per-user entitlement flag | **yes** — small |  |
+| 11 | Per-user entitlement flag | **yes** — small | ✅ |
 | 12 | Precompute (build-time variants) | no |  |
 
 Steps 1–2 need no GrowthBook at all, so we can start immediately.
@@ -680,31 +680,104 @@ do.
 
 ---
 
-## Step 11 — Per-user entitlement flag
+## Step 11 — Per-user entitlement flag ✅
 
 **Goal.** Handle the flag type that genuinely can't be shared between users.
 
+**Why it is different.** Every other flag here is safe in a shared cache because
+many visitors give the same answer — the kill switch is the same for everyone,
+the experiment has three outcomes thousands of people share. An entitlement is a
+fact about *one person*, and a shared entry holding it would hand their access
+to whoever landed on that entry next.
+
 **GrowthBook:**
 
-- [ ] Create a feature, key `beta-entitlement`
-- [ ] Type: **Boolean**, Default Value: `false`
-- [ ] Add a rule: **Forced Value**, condition `id` is in the list → force `true`
-- [ ] Leave the list empty for now
+- [ ] **Features → Add Feature**, key `beta-entitlement` — paste it, keys cannot
+      be renamed
+- [ ] Value Type: **Boolean**, Default Value: **`false`**
+- [ ] **Add Rule → Forced Value**: condition attribute `id`, operator
+      **`is in the list`**, value = your own anon id; Value to Force **`true`**
 - [ ] Enable in `production`
 
-You won't have real IDs until the app has minted some. Load `/flags`, copy your
-own `demo-anon-id` out of the cookie, and paste it into the list.
+No new attributes needed — `id` was created in step 3 and is already ticked as
+**Identifier**.
+
+**Getting your id:** load `/flags` and read it off the step 11 card, under
+"Decided by your id alone". The `demo-anon-id` cookie is `httpOnly`, so the page
+is the easier place to find it.
+
+**Then invalidate.** The ruleset is cached for hours, so press
+`growthbook-payload` on `/invalidate` or nothing changes.
 
 **Code:**
 
-- Uses `use cache: private` — the browser-side cache, the only one allowed to
-  read cookies, and the only safe place for a per-person answer
+- `src/lib/flags/sdk.ts` — `betaEntitlement`, the one flag with no `options`
+- `src/app/_components/entitlement-panel.tsx` — the `use cache: private` scope
+
+### ⚠️ The mistake this step made, and the shape that fixes it
+
+The obvious version puts the whole job in one private scope — it is the only
+one allowed to read `cookies()`, so it can:
+
+```tsx
+export async function EntitlementPanel() {
+  "use cache: private";
+  const { attributes } = await readAttributes();
+  const entitled = await betaEntitlement();   // → getRuleset(), a "use cache" scope
+}
+```
+
+**It builds, runs, and passes every local test.** It is still wrong.
+`betaEntitlement()` reaches a `use cache` scope, so awaiting it inside a private
+one is genuine nesting — the thing `RESEARCH.md` §5.3a says will fail — and it
+does not survive deployment.
+
+The rule from §5.3a: a cached scope may be **returned** from a private one, not
+**awaited** inside it. So evaluate outside, where nothing is nested, and let the
+private scope hold only what is per-person:
+
+```tsx
+export async function EntitlementPanel() {
+  const { attributes } = await readAttributes();
+  const entitled = await betaEntitlement();          // uncached, per request
+  return <EntitlementBody entitled={entitled} visitorId={attributes.id} />;
+}
+
+async function EntitlementBody({ entitled, visitorId }) {
+  "use cache: private";                              // renders only
+}
+```
+
+Both props are facts about one person and they form the cache key — safe **only**
+because the cache is private. The same key in a shared scope would serve one
+visitor's entitlement to whoever hit that entry next.
+
+Recorded as M14 and risk F13. The green local suite is the point: it endorsed a
+shape a companion document had already flagged as prohibited.
+
+**No `options` on this flag, deliberately.** A flag keyed on individual identity
+has no decision space to precompute, and declaring options would drag it into
+step 12's permutation set as though it did.
 
 **Test:**
 
-- [ ] Add your ID to the list → you see the beta feature
-- [ ] Incognito window (different ID) → doesn't see it
-- [ ] Nothing user-specific appears in a shared server cache
+- [x] Add your ID to the list → you see the beta feature
+- [x] Incognito window (different ID) → doesn't see it
+- [x] Nothing user-specific appears in a shared server cache — the panel streams
+      and never reaches the static shell, asserted in e2e
+
+Verified with two ids in the list: both `GRANTED`, any other id `NOT GRANTED`.
+
+**One thing that will cost you ten minutes.** GrowthBook saves the feature
+immediately but holds **rule** edits as an unpublished draft. A flag can be
+live, present in the payload and completely inert — `{"defaultValue": false}`
+with no `rules` array. Look for the "Review and Publish" banner. Check what the
+SDK actually sees rather than what the editor shows:
+
+```bash
+curl -s "https://cdn.growthbook.io/api/features/$GROWTHBOOK_CLIENT_KEY" \
+  | jq '.features["beta-entitlement"]'
+```
 
 **Done when:** two browsers get different answers and neither leaks to the other.
 
@@ -760,6 +833,7 @@ Settings**) but it's Pro/Enterprise only, so check whether your plan has it.
 | Experiment rule won't let you pick `id` | `id` isn't ticked as **Identifier** |
 | Targeting condition never matches | Typo in an attribute value, or the attribute isn't registered |
 | Two variants look identical | Duplicate **Value to Force** (step 6) |
+| Rule added in the UI but the flag still returns its default | The rule is an unpublished draft. Features save immediately, rules do not — look for "Review and Publish" |
 | Everything works locally, nothing works deployed | The `RESEARCH.md` §5.3 problem — plain `use cache` instead of `use cache: remote` |
 | A flag's value never changes, even after `/invalidate` | The `Request` passed to `flag(request)` was hoisted to a module constant. The SDK keys its evaluation cache on that object, so it is memoised for the life of the process (M8) |
 | Build fails with "uncached or runtime data" naming a flag | A flag read normally cannot be prerendered. Either wrap it in `<Suspense>` or, if it has no targeting, read it with `readStatic` (M6) |

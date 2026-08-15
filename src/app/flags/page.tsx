@@ -13,6 +13,10 @@ import {
   HeroExperimentPanel,
   HeroExperimentSkeleton,
 } from "@/app/_components/hero-experiment-panel";
+import {
+  EntitlementPanel,
+  EntitlementSkeleton,
+} from "@/app/_components/entitlement-panel";
 import { ExposureProbe } from "@/app/_components/exposure-probe";
 import { FlagCard } from "@/app/_components/flag-card";
 import { PersonaSwitcher } from "@/app/_components/persona-switcher";
@@ -360,6 +364,46 @@ export default function FlagsPage() {
         >
           <div className="border border-line bg-surface p-4">
             <ExposureProbe />
+          </div>
+        </FlagCard>
+        <FlagCard
+          testId="entitlement-section"
+          step="Step 11 · a per-person flag"
+          title="The one answer that cannot be shared"
+          summary="Forced on for individual ids, so it belongs in your browser rather than on the server."
+          description={
+            <>
+              <p>
+                Every other flag on this page is safe in a shared cache because
+                many visitors give the same answer — the kill switch is the same
+                for everyone, and the experiment has three outcomes that
+                thousands of people share. An entitlement is not like that. It is
+                a fact about <em>you</em>, and a shared entry holding it would
+                hand your access to whoever landed on that entry next.
+              </p>
+              <p>
+                <code className="font-mono">use cache: private</code> is the only
+                correct home for it. It is stored in your browser rather than on
+                the server, so there is no shared entry to leak into — and it is
+                the only scope permitted to read{" "}
+                <code className="font-mono">cookies()</code>, which is where the
+                visitor id lives. The other two reject that outright, and the
+                rejection is the runtime refusing to let a per-person input near
+                a shared entry.
+              </p>
+              <p>
+                The cost is that nothing in a private scope is ever shared, so
+                every visitor pays for whatever it contains. That is the argument
+                for keeping one small: the entitlement check belongs inside, the
+                ruleset behind it does not.
+              </p>
+            </>
+          }
+        >
+          <div className="border border-line bg-surface p-4">
+            <Suspense fallback={<EntitlementSkeleton />}>
+              <EntitlementPanel />
+            </Suspense>
           </div>
         </FlagCard>
       </div>

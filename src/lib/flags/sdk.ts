@@ -154,6 +154,36 @@ export const heroCopy = flag<string, Attributes>({
 });
 
 /**
+ * Whether this specific visitor may see the beta.
+ *
+ * Unlike every other flag here, the answer is **genuinely per-person**: it is
+ * forced on for a list of individual ids, so no two visitors can be assumed to
+ * share it. That rules out both shared caches — `use cache` and
+ * `use cache: remote` would each serve one visitor's entitlement to everybody
+ * in the entry.
+ *
+ * Read it inside `use cache: private`, the only cache that is per-browser and
+ * the only one permitted to read cookies. See `entitlement-panel.tsx`.
+ *
+ * No `options`, deliberately: a flag keyed on individual identity has no
+ * decision space to precompute, and declaring one would put it into step 12's
+ * permutation set as though it did.
+ */
+export const betaEntitlement = flag<boolean, Attributes>({
+  key: "beta-entitlement",
+  origin: origin("beta-entitlement"),
+  defaultValue: FLAG_DEFAULTS["beta-entitlement"],
+  description: "Per-visitor beta access. Forced on for a list of ids.",
+  identify,
+  decide: ({ entities }) =>
+    evaluateRaw(
+      "beta-entitlement",
+      entities ?? {},
+      FLAG_DEFAULTS["beta-entitlement"],
+    ),
+});
+
+/**
  * The group step 12 will precompute over.
  *
  * Order is load-bearing: the generated code is positional, so reordering this

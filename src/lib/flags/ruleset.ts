@@ -11,10 +11,31 @@ import type { FeatureApiResponse } from "@growthbook/growthbook";
  * Earth: nothing about it depends on who is asking, so it is ordinary cacheable
  * content rather than request data (RESEARCH-FLAGS.md §4.1).
  *
- * Plain `use cache`, not `remote`, and deliberately so. This call takes no
- * request-time input, so it resolves during the prerender and the answer is
- * baked into the static shell. Measured: one read during the build, zero across
- * eight subsequent requests.
+ * Plain `use cache`, not `remote` — and the original reason given here was
+ * wrong, so it is worth stating what the real one is.
+ *
+ * The claim used to be that `remote` would stop the value reaching the static
+ * shell. **Measured: it does not.** Switching this directive to
+ * `use cache: remote` still builds, still leaves `/flags` a partial prerender,
+ * and still bakes the correct live kill-switch value into the HTML at a
+ * byte offset inside `<main>`. Shell eligibility is not the deciding factor.
+ *
+ * What actually decides it is unmeasured, and cuts both ways:
+ *
+ *   - **For `remote`:** on serverless, plain `use cache` is per-instance
+ *     memory, so `updateTag` fired on one instance may not reach an instance
+ *     already holding a warm entry. Since `/invalidate` is this project's whole
+ *     flag-change mechanism (step 4's webhook being blocked), that is a
+ *     correctness question, not a performance one.
+ *   - **Against `remote`:** the work being cached is a single Edge Config read,
+ *     which is cheap on Vercel. Per-instance memory amortises it across an
+ *     instance's whole lifetime, whereas a shared store is a round trip per
+ *     lookup. Unlike /ppr's 2000ms slots, `remote` here may cost more calls
+ *     than it saves.
+ *
+ * Left as plain `use cache` because that is what M1 and M7 measured, and the
+ * case for changing it is currently an argument rather than a number. See
+ * RESEARCH-FLAGS.md §14 Q7 for the experiment that would settle it.
  *
  * Two sources, because they are good at different things:
  *

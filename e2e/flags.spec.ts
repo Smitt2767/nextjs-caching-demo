@@ -250,6 +250,54 @@ test.describe("flags: the experiment", () => {
   });
 });
 
+test.describe("flags: the per-person flag", () => {
+  const panel = (page: Page, id: string) =>
+    page.getByTestId("entitlement-section").getByTestId(id);
+
+  test("each visitor is decided by their own id", async ({
+    browser,
+    baseURL,
+  }) => {
+    /**
+     * The claim is isolation, not the value. Whether anyone is entitled depends
+     * on a list in GrowthBook that may be edited, so asserting ON or OFF would
+     * make this fail whenever somebody grants access. What must hold is that two
+     * browsers are decided separately — a shared cache entry would give the
+     * second visitor the first one's id.
+     */
+    const read = async (id: string) => {
+      const context = await browser.newContext();
+      await context.addCookies([
+        { name: "demo-anon-id", value: id, url: baseURL! },
+      ]);
+      const page = await context.newPage();
+      await page.goto("/flags");
+      const seen = await panel(page, "entitlement-id").textContent();
+      await context.close();
+      return seen?.trim();
+    };
+
+    expect(await read("e2e-entitled-alice")).toBe("e2e-entitled-alice");
+    expect(await read("e2e-entitled-bob")).toBe("e2e-entitled-bob");
+  });
+
+  test("nothing per-person reaches the static shell", async ({ page }) => {
+    // A private scope streams by construction: it reads cookies, so it cannot
+    // be part of a document that is shared by everyone. If this ever landed in
+    // the shell it would mean one visitor's entitlement had been prerendered
+    // for all of them.
+    const html = await (await page.request.get("/flags")).text();
+    const closingMain = html.indexOf("</main>");
+    const value = html.indexOf('data-testid="entitlement-value"');
+
+    expect(value).toBeGreaterThan(-1);
+    expect(value).toBeGreaterThan(closingMain);
+
+    await page.goto("/flags");
+    await expect(panel(page, "entitlement-value")).toBeVisible();
+  });
+});
+
 test.describe("flags: the exposure counter", () => {
   /**
    * The counters are module state on one server, shared by every test here, so
