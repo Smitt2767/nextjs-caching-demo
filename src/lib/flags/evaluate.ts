@@ -24,16 +24,40 @@ import type { Attributes } from "@/lib/personas";
  * can fail; without a value here an outage at GrowthBook would decide the
  * behaviour of this app. Copies of the GrowthBook defaults, kept deliberately
  * boring — the fallback should be the safe state, not the interesting one.
+ *
+ * It doubles as the type source: a flag's value is shaped like its default, so
+ * a boolean flag cannot be read as a string by mistake.
  */
 export const FLAG_DEFAULTS = {
   "catalog-kill-switch": true,
   "pricing-badge": false,
-} as const satisfies Record<string, boolean>;
+  "hero-copy": "control",
+} as const;
 
 export type FlagKey = keyof typeof FLAG_DEFAULTS;
+export type FlagValue<K extends FlagKey> = (typeof FLAG_DEFAULTS)[K];
 
-export type FlagResult = {
-  value: boolean;
+/**
+ * What an experiment rule decided, when one was involved.
+ *
+ * Kept apart from `reason` because these are the fields an exposure event
+ * needs — and step 8 is entirely about where that event may and may not be
+ * fired. Nothing here records one yet.
+ */
+export type ExperimentInfo = {
+  key: string;
+  variationId: number;
+  /**
+   * False when the visitor was excluded — by targeting, or by falling outside
+   * the rollout. They still receive a value; they must not be counted.
+   */
+  inExperiment: boolean;
+  /** The attribute value that was hashed, so an assignment is inspectable. */
+  hashValue?: string;
+};
+
+export type FlagResult<V> = {
+  value: V;
   /** Which store served the ruleset, or `fallback` if none could. */
   source: RulesetSource | "fallback";
   /** How long filling the cache entry took. See `Ruleset.fetchMs`. */
@@ -47,14 +71,23 @@ export type FlagResult = {
    * spend an afternoon on.
    */
   reason?: string;
+  /**
+   * GrowthBook's own reason code on its own — `force`, `experiment`,
+   * `defaultValue`, `unknownFeature`.
+   *
+   * Separate from `reason` (which is for display) because callers branch on it,
+   * and string-matching a formatted label is how that goes wrong.
+   */
+  ruleSource?: string;
+  experiment?: ExperimentInfo;
   /** Populated when the ruleset could not be read. */
   error?: string;
 };
 
-async function evaluate(
-  key: FlagKey,
+async function evaluate<K extends FlagKey>(
+  key: K,
   attributes: Partial<Attributes>,
-): Promise<FlagResult> {
+): Promise<FlagResult<FlagValue<K>>> {
   const fallback = FLAG_DEFAULTS[key];
   const ruleset = await getRuleset();
 
@@ -62,7 +95,11 @@ async function evaluate(
   // error crossing a `use cache` boundary fails the prerender even when it is
   // caught out here. See the note on `getRuleset`.
   if (!ruleset) {
-    return { value: fallback, source: "fallback", error: "ruleset unreachable" };
+    return {
+      value: fallback,
+      source: "fallback",
+      error: "ruleset unreachable",
+    };
   }
 
   const client = new GrowthBookClient();
@@ -73,11 +110,33 @@ async function evaluate(
   const result = client.evalFeature(key, { attributes });
   client.destroy();
 
+  // Check the type rather than trusting it: the value lives in GrowthBook,
+  // where a flag can be changed from boolean to string without the code
+  // hearing about it. Falling back beats rendering something incoherent.
+  const value =
+    result.value !== null && typeof result.value === typeof fallback
+      ? (result.value as FlagValue<K>)
+      : fallback;
+
+  console.log("Flag value: ", key, value);
+  const experimentResult = result.experimentResult;
+
   return {
-    value: typeof result.value === "boolean" ? result.value : fallback,
+    value,
     source: ruleset.source,
     fetchMs: ruleset.fetchMs,
-    reason: result.ruleId ? `${result.source} · ${result.ruleId}` : result.source,
+    reason: result.ruleId
+      ? `${result.source} · ${result.ruleId}`
+      : result.source,
+    ruleSource: result.source,
+    experiment: experimentResult
+      ? {
+          key: result.experiment?.key ?? key,
+          variationId: experimentResult.variationId,
+          inExperiment: experimentResult.inExperiment,
+          hashValue: String(experimentResult.hashValue ?? ""),
+        }
+      : undefined,
   };
 }
 
@@ -88,7 +147,9 @@ async function evaluate(
  * everyone. That is what lets this whole call resolve during the prerender and
  * land in the static shell.
  */
-export async function getFlag(key: FlagKey): Promise<FlagResult> {
+export async function getFlag<K extends FlagKey>(
+  key: K,
+): Promise<FlagResult<FlagValue<K>>> {
   return evaluate(key, {});
 }
 
@@ -104,9 +165,9 @@ export async function getFlag(key: FlagKey): Promise<FlagResult> {
  * attributes are per-request, and matching them against the rules is free. So
  * "this flag is personalised" costs a rule walk, not a fetch.
  */
-export async function getTargetedFlag(
-  key: FlagKey,
+export async function getTargetedFlag<K extends FlagKey>(
+  key: K,
   attributes: Attributes,
-): Promise<FlagResult> {
+): Promise<FlagResult<FlagValue<K>>> {
   return evaluate(key, attributes);
 }

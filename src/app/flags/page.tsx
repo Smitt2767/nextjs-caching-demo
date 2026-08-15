@@ -5,6 +5,10 @@ import {
   AttributesPanel,
   AttributesSkeleton,
 } from "@/app/_components/attributes-panel";
+import {
+  HeroExperimentPanel,
+  HeroExperimentSkeleton,
+} from "@/app/_components/hero-experiment-panel";
 import { PersonaSwitcher } from "@/app/_components/persona-switcher";
 import {
   TargetedFlagPanel,
@@ -216,6 +220,57 @@ export default function FlagsPage() {
           matching them against the rules is a walk over some JSON. Personalising
           a flag costs a rule walk, not a round trip, which is why a page full of
           targeted flags can still be mostly static.
+        </p>
+      </section>
+
+      <section
+        className="mt-9 max-w-4xl"
+        aria-labelledby="experiment-heading"
+        data-testid="experiment-section"
+      >
+        <div className="max-w-3xl">
+          <p
+            id="experiment-heading"
+            className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle"
+          >
+            Step 6 · an experiment
+          </p>
+          <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
+            Targeting and bucketing are not the same mechanism
+          </h2>
+          <p className="mt-1 text-[14px] leading-relaxed text-ink-muted">
+            <code className="font-mono">hero-copy</code> carries two rules doing
+            two different jobs. A forced rule decides{" "}
+            <strong className="text-ink">eligibility</strong> — corporate
+            visitors are excluded and always see control. The experiment rule
+            decides <strong className="text-ink">which variant</strong> an
+            eligible visitor gets, by hashing their id. Only the second is
+            random.
+          </p>
+        </div>
+
+        <div className="mt-4 border border-line bg-surface-raised p-4">
+          <Suspense fallback={<HeroExperimentSkeleton />}>
+            <HeroExperimentPanel />
+          </Suspense>
+        </div>
+
+        <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+          Switch to the corporate persona and the panel says{" "}
+          <em>targeting</em>: the answer was settled before any hashing
+          happened, and that visitor must not be counted towards the result.
+          Every other persona shares one bucketing id — yours — so they all land
+          in the same variant. Clear the{" "}
+          <code className="font-mono">demo-anon-id</code> cookie to be issued a
+          new one and roll again.
+        </p>
+
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-subtle">
+          Nothing here records an exposure yet. An A/B test is an exposure event
+          paired with a conversion, and <em>where</em> that event may be fired is
+          the whole subject of step 8 — put it one level too deep and it fires
+          once per cache entry instead of once per visitor, with no error and a
+          page that looks perfect.
         </p>
       </section>
     </main>

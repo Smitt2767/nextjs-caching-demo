@@ -12,7 +12,7 @@ shaped this way. You don't need it to follow along.
 
 ## The 11 steps
 
-**Done so far: 1, 2, 3, 4, 5.** Step 4 landed as a button rather than a webhook —
+**Done so far: 1, 2, 3, 4, 5, 6.** Step 4 landed as a button rather than a webhook —
 the free plan has no webhook slot to spare. Findings are in `RESEARCH-FLAGS.md`
 §13.1; two of them were build-breaking surprises worth reading first.
 
@@ -23,7 +23,7 @@ the free plan has no webhook slot to spare. Findings are in `RESEARCH-FLAGS.md`
 | 3 | Connect GrowthBook, one simple flag | **yes** — first setup | ✅ |
 | 4 | Invalidate the ruleset on demand | webhook blocked — free plan | ✅ |
 | 5 | Targeting: a flag that varies by country | **yes** — small | ✅ |
-| 6 | First experiment: 3 variants | **yes** — small |  |
+| 6 | First experiment: 3 variants | **yes** — small | ✅ |
 | 7 | Cache the variant | no |  |
 | 8 | The exposure counter | no |  |
 | 9 | Deploy and measure on Vercel | no |  |

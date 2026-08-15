@@ -171,6 +171,80 @@ test.describe("flags: targeting", () => {
   });
 });
 
+test.describe("flags: the experiment", () => {
+  const hero = (page: Page, id: string) =>
+    page.getByTestId("experiment-section").getByTestId(id);
+
+  test("the same visitor keeps the same variant", async ({ page, baseURL }) => {
+    await page.context().addCookies([
+      { name: "demo-anon-id", value: "e2e-stable-visitor", url: baseURL! },
+    ]);
+
+    await page.goto("/flags");
+    const first = await hero(page, "hero-variant").textContent();
+    expect(first).toBeTruthy();
+
+    await page.reload();
+    await expect(hero(page, "hero-variant")).toHaveText(first!);
+  });
+
+  test("different visitors do not all land in one variant", async ({
+    browser,
+    baseURL,
+  }) => {
+    // Not an assertion about the split — that lives in GrowthBook and may be
+    // edited. What must hold is that the id is actually being hashed, which a
+    // single-variant result across many ids would disprove.
+    const seen = new Set<string>();
+
+    for (let i = 0; i < 12; i++) {
+      const context = await browser.newContext();
+      await context.addCookies([
+        { name: "demo-anon-id", value: `e2e-spread-${i}`, url: baseURL! },
+      ]);
+      const page = await context.newPage();
+      await page.goto("/flags");
+      const variant = await hero(page, "hero-variant").textContent();
+      if (variant) seen.add(variant.trim());
+      await context.close();
+    }
+
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  test("targeting excludes before hashing happens", async ({
+    page,
+    baseURL,
+  }) => {
+    await page.context().addCookies([
+      { name: "demo-anon-id", value: "e2e-corporate-visitor", url: baseURL! },
+      { name: "demo-persona", value: "corporate-desktop-us", url: baseURL! },
+    ]);
+
+    await page.goto("/flags");
+
+    // The two mechanisms are the point of the section: a corporate visitor is
+    // decided by a rule, never bucketed, and must not count towards a result.
+    await expect(hero(page, "hero-mechanism")).toContainText("targeting");
+    await expect(hero(page, "hero-mechanism")).not.toContainText("hashing");
+    await expect(hero(page, "hero-variant")).toHaveText("control");
+  });
+
+  test("an eligible visitor is decided by hashing", async ({
+    page,
+    baseURL,
+  }) => {
+    await page.context().addCookies([
+      { name: "demo-anon-id", value: "e2e-eligible-visitor", url: baseURL! },
+      { name: "demo-persona", value: "anxiety-mobile-in", url: baseURL! },
+    ]);
+
+    await page.goto("/flags");
+    await expect(hero(page, "hero-mechanism")).toContainText("hashing");
+    await expect(hero(page, "hero-headline")).not.toBeEmpty();
+  });
+});
+
 test.describe("flags: device classification", () => {
   // `userAgent()` (ua-parser, bundled into Next) gives the type; Client Hints
   // give the capability. Neither alone is enough for the four buckets.
