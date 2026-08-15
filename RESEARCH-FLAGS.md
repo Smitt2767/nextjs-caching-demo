@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.8 (design study; steps 1–9 built) |
-| **Status** | In progress. Measurements M1–M11 recorded in §13.1. |
+| **Version** | 1.0 (steps 1–9 built; step 10 measured on Vercel) |
+| **Status** | In progress. Measurements M1–M13 recorded in §13.1; M12 and M13 are the deployed run. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -1265,6 +1265,119 @@ cold entry before the first fills it and the broken path records a few extra
 exposures. That stampede is real and worth knowing about, but it flatters the
 broken path; one at a time gives the floor.
 
+**M12. The deployed run.** **[measured]** · *on Vercel, commit `7d182a5`*
+
+RND-NEXT-CACHE-001 §5.3 is the reason this step exists: the last time local
+numbers were trusted, the entire caching benefit vanished on deploy and nothing
+warned us. Everything below was re-measured against
+`nextjs-caching-experiments.vercel.app`.
+
+**`use cache: remote` really is shared across instances.** The decisive
+measurement, because per-process memory would pass every weaker version of this
+test. Eight requests, correlating Vercel's invocation id with the render
+timestamp:
+
+```
+control      2026-08-15T17:50:09.955Z   bom1::7w286-…-cf45bfff4b31
+reassurance  2026-08-15T17:46:34.661Z   bom1::skxxg-…-7b6bbb6aca1d
+urgency      2026-08-15T17:46:26.449Z   bom1::nlx6d-…-fb6f80ef5f43
+reassurance  2026-08-15T17:46:34.661Z   bom1::cr26q-…-a11b86ac6f5c
+control      2026-08-15T17:50:09.955Z   bom1::v4mv6-…-2df176b2cd86
+control      2026-08-15T17:50:09.955Z   bom1::djv4f-…-cc497592b64b
+control      2026-08-15T17:50:09.955Z   bom1::jd9gr-…-a5e9b1cd1355
+reassurance  2026-08-15T17:46:34.661Z   bom1::n9sm9-…-b43bee1a5070
+```
+
+**Eight distinct invocation ids, three distinct timestamps.** Plain `use cache`
+would have produced eight — that is precisely the §5.3 failure. Two of those
+entries were also served in a run four minutes earlier, so they outlive both the
+invocation and the gap between them.
+
+**M10 confirmed:** 12 distinct visitors produced 3 renders, one per variant.
+**M11 confirmed:** 3 exposures / 50 visitors, and 3 / 100 on a second run —
+identical to local, despite the counters being instance-local, because a browser
+session's Server Action calls landed on warm instances.
+**M6's escape confirmed:** the kill switch sits at a byte-identical offset
+inside `<main>` across 8 requests, so it is in the prerendered shell on real
+infrastructure, not merely on `next start`.
+
+24 of the 25 `/flags` e2e tests pass unmodified against the deployment.
+
+**The one failure is a real deployment defect, not a test artefact.**
+`FLAGS_SECRET` is set in `.env` but not in Vercel's environment, and the failure
+mode is worse than "the Toolbar shows nothing":
+
+| Request | Local | Deployed |
+| --- | --- | --- |
+| no `Authorization` header | 401 | 401 |
+| garbage bearer token | 401 | **500** |
+| a valid access proof | 200 | **500** |
+
+`verifyAccessProof` throws `flags: Missing FLAGS_SECRET` rather than returning
+false, and that only happens once there is a header to verify — which is why the
+unauthenticated case still answers 401 and looks healthy. **This blocks step
+12**: `generatePermutations` throws at build time without the secret, so the
+precompute route would fail the deploy rather than degrade.
+
+**What could not be measured remotely.** Whether the ruleset is re-read per
+request (M1 on real infrastructure). Isolating it needs the `instrumentation.ts`
+fetch counter used locally, and round-trip noise from outside the region
+(0.54–1.45s across six identical requests) is an order of magnitude larger than
+an in-region Edge Config read. §13.2 claim 9 stands unanswered for the same
+reason.
+
+**The survive-a-deploy check** is M13, below.
+
+**M13. A deploy discards every render and no assignments.** **[measured]**
+
+The redeploy that added `FLAGS_SECRET` doubled as the survive-a-deploy check
+step 10 was missing. Same three variants, before and after:
+
+| Variant | Before the deploy | After |
+| --- | --- | --- |
+| `control` | `17:50:09.955Z` | `17:57:49.450Z` |
+| `reassurance` | `17:46:34.661Z` | `17:56:55.563Z` |
+| `urgency` | `17:46:26.449Z` | `17:56:55.548Z` |
+
+**Every entry is gone**, which settles §13.2 claim 4: `use cache: remote` does
+not survive a deploy. It re-warms correctly — ten visitors afterwards produced
+three timestamps again, in a 5/3/2 split — so the cost of a deploy is one render
+per variant, not one per visitor.
+
+**But the assignments survived, and that is the more useful half.** The same
+eight visitor ids, before and after:
+
+```
+1 control      → control       5 control      → control
+2 reassurance  → reassurance   6 control      → control
+3 urgency      → urgency       7 control      → control
+4 reassurance  → reassurance   8 reassurance  → reassurance
+```
+
+Eight of eight unchanged. **This answers §14 Q5** — what happens to in-flight
+experiments across a deploy — and the answer is: nothing. An assignment is
+*derived*, not stored: the visitor's id is hashed against the ruleset on every
+request, so it survives anything the cache does. Only the rendered output was
+ever in the cache, and re-rendering it produces identical markup.
+
+The distinction is worth holding onto, because it is the same one M10 rests on.
+What is cached is the *output of a decision*, never the decision itself. A
+system that cached assignments would have reshuffled every visitor here.
+
+**Deployment health after the fix.** The discovery endpoint no longer 500s:
+
+| Request | Before the fix | After |
+| --- | --- | --- |
+| no `Authorization` header | 401 | 401 |
+| garbage bearer token | **500** | 401 |
+| a valid *locally-minted* proof | **500** | 401 |
+
+The third row is expected, not a remaining fault: the secret deployed differs
+from the one in `.env`, so a proof minted locally cannot be decrypted remotely.
+That is the ordinary per-environment-secret trade-off. Confirming the 200 path
+on the deployment needs a proof minted with the deployed secret, which is the
+Toolbar's job.
+
 ### 13.2 Claims still to verify
 
 The following must be measured on the deployed application, using the
@@ -1275,7 +1388,7 @@ six-request curl loop already documented in `README.md`.
 | 1 | Tracking inside a cached scope fires once per entry, not per request | **answered — M11** | Measured 3/50, and 3/100 on a second run. Still worth repeating on the deployment, where the counters are instance-local |
 | 2 | The `fetch` Data Cache still functions under `cacheComponents: true` | docs, ambiguous | Tag a payload fetch, measure hit rate on the deployment |
 | 3 | The `fetch` Data Cache survives a deploy | docs | Measure across two consecutive deploys |
-| 4 | `use cache: remote` does **not** survive a deploy | docs | Same test, opposite expectation |
+| 4 | `use cache: remote` does **not** survive a deploy | **answered — M13** | Confirmed: all three variant renders were discarded, and re-warmed to three entries |
 | 5 | Proxy runs on `<Link>` prefetch/RSC requests, and what it costs | inferred | Invocation counts with and without prefetch |
 | 6 | An unlisted `[code]` really serves an instant App Shell, then upgrades | docs · **half answered** | A probe build emitted `◐ /precompute-probe/[code]` beside the `○` permutations, so the shell exists. The timing and upgrade behaviour are still unmeasured |
 | 7 | `next/root-params` narrows the cache key to `[code]` alone | docs | Two routes sharing a cached component under different deeper params |
@@ -1303,8 +1416,10 @@ proceed in parallel with the build.
   is in a cookie and the code is in the URL, which wins on a mismatch?
 - **Q4.** Can Tier 0 and Tier 2 share one payload fetch, or does proxy's copy
   necessarily diverge from the page's?
-- **Q5.** What happens to in-flight experiments across a deploy, given that
-  `use cache: remote` entries do not survive one?
+- **Q5.** ~~What happens to in-flight experiments across a deploy?~~
+  **Answered (M13): nothing.** The renders are discarded but the assignments are
+  not, because an assignment is derived by hashing the visitor id rather than
+  stored. A deploy costs one re-render per variant and reshuffles no one.
 - **Q6.** Is there a clean way to run Tier 1 and Tier 2 on the same page — hero
   precomputed, everything below streamed — without two flag groups fighting?
 
@@ -1340,6 +1455,8 @@ proceed in parallel with the build.
 | 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |
 | 0.4 | 15 Aug 2026 | Step 6 built; Flags SDK integrated alongside the existing path. M6 (an SDK flag cannot be in the shell) and M7 (the stock adapter reads the ruleset once per request) added. |
 | 0.5 | 15 Aug 2026 | Step 7: every flag moved onto the SDK, including the prerendered one. M8 (a reused `Request` memoises for the process lifetime) and M9 (the stock adapter cannot be prerendered at all) added. |
+| 1.0 | 15 Aug 2026 | `FLAGS_SECRET` deployed; the redeploy doubled as the survive-a-deploy check. M13 added — every render discarded, every assignment kept — answering §13.2 claim 4 and §14 Q5. |
+| 0.9 | 15 Aug 2026 | Step 10: everything re-measured on Vercel. M12 added — eight invocation ids against three render timestamps settles §5.3 for this app, M10 and M11 hold unchanged, and `FLAGS_SECRET` is found missing from the deployment, which blocks step 12. |
 | 0.8 | 15 Aug 2026 | Step 9 built: the exposure counter. M11 added — 3 exposures against 50 visitors, and 3 against 100 on a second run — answering §13.2 claim 1, the one this document called blocking. |
 | 0.7 | 15 Aug 2026 | Step 8 built: the rendered variant cached by variant. M10 added — 12 requests across 3 variants produced 3 renders — with risk F12 for the prop-shaped leak that would undo it. |
 | 0.6 | 15 Aug 2026 | Rewritten rather than amended. §1 and §11 restated from the current position instead of carrying three rounds of "superseded by" notes; §11.2 replaced with the route structure actually built; risk F11 added from M8. |

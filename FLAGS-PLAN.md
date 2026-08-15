@@ -12,7 +12,7 @@ shaped this way. You don't need it to follow along.
 
 ## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9.** Step 4 landed as a button rather than a
+**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.** Step 4 landed as a button rather than a
 webhook — the free plan has no webhook slot to spare. Findings are in
 `RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
 reading first.
@@ -28,7 +28,7 @@ reading first.
 | 7 | Move every flag onto the Flags SDK | no | ✅ |
 | 8 | Cache the variant | no | ✅ |
 | 9 | The exposure counter | no | ✅ |
-| 10 | Deploy and measure on Vercel | no |  |
+| 10 | Deploy and measure on Vercel | no | ✅ |
 | 11 | Per-user entitlement flag | **yes** — small |  |
 | 12 | Precompute (build-time variants) | no |  |
 
@@ -605,7 +605,7 @@ broken path records a few extra, which flatters it.
 
 ---
 
-## Step 10 — Deploy and measure on Vercel
+## Step 10 — Deploy and measure on Vercel ✅
 
 **Goal.** Re-run everything on real infrastructure.
 
@@ -617,16 +617,66 @@ warned us. Local results don't count.
 
 **What to check:**
 
-- [ ] Step 8's frozen timestamp is still frozen on Vercel
-- [ ] Step 9's counter still shows a gap (3-ish vs 50)
-- [ ] Step 4's webhook fires — flip a flag, reload, see the change
-- [ ] The ruleset isn't refetched on every request
-- [ ] Deploy again, then re-check: which caches survived the deploy?
+- [x] Step 8's frozen timestamp is still frozen on Vercel
+- [x] Step 9's counter still shows a gap (3-ish vs 50)
+- [x] Deploy again, then re-check: which caches survived the deploy?
+- [ ] Step 4's webhook fires — still blocked, no webhook slot on the free plan
+- [ ] The ruleset isn't refetched on every request — **not measurable remotely**
 
-Findings go into `RESEARCH-FLAGS.md` §13, which is currently a list of
-predictions with nothing measured against it.
+**The measurement that mattered.** Correlating Vercel's invocation id with the
+render timestamp, eight requests gave **eight distinct invocation ids and three
+distinct timestamps** — one per variant. Plain `use cache` would have given
+eight. That is §5.3 settled for this app rather than assumed.
 
-**Done when:** the numbers from steps 7 and 8 hold up on the deployment.
+Two of those entries were also served four minutes earlier, so they outlive both
+the invocation and the gap between them.
+
+Step 9's numbers came back identical to local: 3 / 50, then 3 / 100. 24 of the
+25 `/flags` e2e tests pass unmodified against the deployment.
+
+### What the deploy itself measured
+
+The redeploy that added `FLAGS_SECRET` doubled as the survive-a-deploy check:
+
+| Variant | Before | After |
+| --- | --- | --- |
+| `control` | `17:50:09.955Z` | `17:57:49.450Z` |
+| `reassurance` | `17:46:34.661Z` | `17:56:55.563Z` |
+| `urgency` | `17:46:26.449Z` | `17:56:55.548Z` |
+
+**Every render was discarded** — `use cache: remote` does not survive a deploy —
+and re-warmed to three entries again. A deploy costs one render per variant.
+
+**No visitor was reshuffled**, though: all eight test ids kept their variant
+across it. An assignment is *derived* by hashing the id, not stored, so it
+survives anything the cache does. In-flight experiments are safe across a
+deploy; only the render cost is repaid.
+
+### `FLAGS_SECRET` · fixed
+
+Previously missing on Vercel, which made the discovery endpoint return **500**
+for any request carrying an `Authorization` header — `verifyAccessProof` throws
+rather than returning false. It answered 401 unauthenticated, so it looked
+healthy until something actually called it.
+
+Now deployed, and the endpoint returns 401 rather than 500. A proof minted
+locally still gets 401 because the deployed secret is a different value from
+`.env` — expected, and the ordinary per-environment trade-off. Verifying the
+200 path remotely needs a proof minted with the deployed secret, which is the
+Toolbar's job.
+
+Step 12 is unblocked: `generatePermutations` throws at build time without the
+secret, so the precompute route would have failed the deploy.
+
+### What could not be measured from here
+
+Whether the ruleset is re-read per request. Isolating it needs the
+`instrumentation.ts` fetch counter used locally, and round-trip noise from
+outside the region — 0.54s to 1.45s across six identical requests — is an order
+of magnitude larger than an in-region Edge Config read.
+
+**Done when:** the numbers from steps 8 and 9 hold up on the deployment. They
+do.
 
 ---
 
