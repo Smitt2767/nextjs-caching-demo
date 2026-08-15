@@ -250,6 +250,120 @@ test.describe("flags: the experiment", () => {
   });
 });
 
+test.describe("flags: caching the variant", () => {
+  const cached = (page: Page, id: string) =>
+    page.getByTestId("cached-hero-section").getByTestId(id);
+
+  test("the render is frozen within a variant", async ({ page, baseURL }) => {
+    await page.context().addCookies([
+      { name: "demo-anon-id", value: "e2e-frozen-visitor", url: baseURL! },
+    ]);
+
+    await page.goto("/flags");
+    const first = await cached(page, "cached-hero-rendered-at").textContent();
+    expect(first).toBeTruthy();
+
+    // The timestamp is generated inside the cached component, so it is part of
+    // the entry rather than a description of it. A hit replays it unchanged.
+    await page.reload();
+    await expect(cached(page, "cached-hero-rendered-at")).toHaveText(first!);
+  });
+
+  test("visitors sharing a variant share one render", async ({
+    browser,
+    baseURL,
+  }) => {
+    /**
+     * The claim of the whole step: N visitors across M variants cost M renders.
+     * Asserted as "distinct timestamps never exceed distinct variants" rather
+     * than as a fixed number, because the split lives in GrowthBook and may be
+     * edited — but a render per visitor would break it however the traffic is
+     * divided.
+     */
+    const seen = new Map<string, Set<string>>();
+
+    for (let i = 0; i < 8; i++) {
+      const context = await browser.newContext();
+      await context.addCookies([
+        { name: "demo-anon-id", value: `e2e-shared-${i}`, url: baseURL! },
+      ]);
+      const page = await context.newPage();
+      await page.goto("/flags");
+
+      const variant = (
+        await cached(page, "cached-hero-variant").textContent()
+      )?.trim();
+      const renderedAt = (
+        await cached(page, "cached-hero-rendered-at").textContent()
+      )?.trim();
+      await context.close();
+
+      if (!variant || !renderedAt) continue;
+      if (!seen.has(variant)) seen.set(variant, new Set());
+      seen.get(variant)!.add(renderedAt);
+    }
+
+    expect(seen.size).toBeGreaterThan(0);
+    for (const [variant, timestamps] of seen) {
+      expect(
+        timestamps.size,
+        `variant ${variant} rendered ${timestamps.size} times, expected 1`,
+      ).toBe(1);
+    }
+  });
+
+  test("expiring one variant leaves the others frozen", async ({
+    browser,
+    baseURL,
+  }) => {
+    // Per-variant tags, so a copy change to one variant does not throw away
+    // the other two renders.
+    const read = async (id: string) => {
+      const context = await browser.newContext();
+      await context.addCookies([
+        { name: "demo-anon-id", value: id, url: baseURL! },
+      ]);
+      const page = await context.newPage();
+      await page.goto("/flags");
+      const out = {
+        variant: (
+          await cached(page, "cached-hero-variant").textContent()
+        )?.trim(),
+        renderedAt: (
+          await cached(page, "cached-hero-rendered-at").textContent()
+        )?.trim(),
+      };
+      await context.close();
+      return out;
+    };
+
+    // Find two visitors in different variants, or skip: the split is
+    // GrowthBook's to decide and a single-variant result is not a failure here.
+    const samples = [];
+    for (let i = 0; i < 10; i++) samples.push(await read(`e2e-expire-${i}`));
+    const first = samples[0];
+    const other = samples.find((s) => s.variant !== first.variant);
+    test.skip(!other, "all sampled visitors landed in one variant");
+
+    const page = await browser.newPage();
+    await page.goto("/invalidate");
+    await page.getByTestId(`invalidate-hero-variant-${first.variant}`).click();
+    await expect(page.getByTestId("invalidate-receipt")).toHaveAttribute(
+      "data-ok",
+      "true",
+    );
+    await page.close();
+
+    const firstAgain = await read("e2e-expire-0");
+    const otherAgain = await read(
+      `e2e-expire-${samples.indexOf(other!)}`,
+    );
+
+    expect(firstAgain.renderedAt).not.toBe(first.renderedAt);
+    expect(otherAgain.renderedAt).toBe(other!.renderedAt);
+  });
+});
+
 test.describe("flags: the Flags SDK", () => {
   test("an untargeted SDK flag is prerendered, a targeted one streams", async ({
     page,

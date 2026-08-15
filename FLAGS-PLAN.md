@@ -12,7 +12,7 @@ shaped this way. You don't need it to follow along.
 
 ## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6, 7.** Step 4 landed as a button rather than a
+**Done so far: 1, 2, 3, 4, 5, 6, 7, 8.** Step 4 landed as a button rather than a
 webhook — the free plan has no webhook slot to spare. Findings are in
 `RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
 reading first.
@@ -26,7 +26,7 @@ reading first.
 | 5 | Targeting: a flag that varies by country | **yes** — small | ✅ |
 | 6 | First experiment: 3 variants | **yes** — small | ✅ |
 | 7 | Move every flag onto the Flags SDK | no | ✅ |
-| 8 | Cache the variant | no |  |
+| 8 | Cache the variant | no | ✅ |
 | 9 | The exposure counter | no |  |
 | 10 | Deploy and measure on Vercel | no |  |
 | 11 | Per-user entitlement flag | **yes** — small |  |
@@ -491,7 +491,7 @@ with the kill switch in the shell.
 
 ---
 
-## Step 8 — Cache the variant
+## Step 8 — Cache the variant ✅
 
 **Goal.** Render each variant once and share it, instead of re-rendering per
 visitor.
@@ -504,18 +504,47 @@ variants should cost 3 renders, not 50,000. The trick is to cache using the
 
 **Code:**
 
-- `src/lib/flags/hero-render.ts` — `use cache: remote`, keyed by variant
+- `src/lib/flags/hero-copy.ts` — the three variants and the render cost, shared
+  with step 6 so the two panels cannot drift
+- `src/app/_components/cached-hero-panel.tsx` — `use cache: remote` keyed by
+  variant, plus the uncached wrapper that decides
+- `src/lib/cache-tags.ts` — one tag per variant, so `/invalidate` can expire a
+  single variant's markup
 
-`remote`, not plain `use cache`, for the reason we already measured in
-`RESEARCH.md` §5.3: plain `use cache` is per-process memory, which is a real
-cache locally and no cache at all on Vercel.
+`remote`, not plain `use cache`, for the reason measured in `RESEARCH.md` §5.3:
+plain `use cache` is per-process memory, which is a real cache locally and no
+cache at all on Vercel. Locally the two are indistinguishable — that is exactly
+what made it expensive to find the first time.
+
+**The shape that matters** is the split, not the directive:
+
+```tsx
+export async function CachedHeroPanel() {
+  const variant = await heroCopy();          // per visitor, outside the cache
+  return <CachedHero variant={variant} />;   // per variant, inside it
+}
+```
+
+Deciding is cheap — a hash and a walk over rules already in memory. Rendering is
+expensive. Put the decision *inside* the cached scope and the first visitor's
+variant is served to everyone.
 
 **Test:**
 
-- [ ] Build and run: `pnpm build && pnpm start`
-- [ ] Load `/flags` a few times in the same variant → the render timestamp is
-      **frozen**
-- [ ] Switch to a different variant → a different frozen timestamp
+- [x] Build and run: `pnpm build && pnpm start`
+- [x] Load `/flags` a few times → the render timestamp is **frozen**
+- [x] Different visitors in the same variant → the **same** frozen timestamp
+- [x] A visitor in another variant → a different frozen timestamp
+- [x] Expire one variant on `/invalidate` → only that variant re-renders
+
+Measured: 12 requests from 10 distinct visitor ids produced **3 renders**, one
+per variant (`RESEARCH-FLAGS.md` M10).
+
+**The trap, and it is a quiet one.** Nothing stops a visitor-specific value from
+entering the cached component as a prop. `cookies()` and `headers()` are
+rejected outright, but an id passed in is accepted silently, joins the cache key,
+and turns one entry per variant back into one per visitor. Cache hit rates stay
+plausible and the page looks perfect. Pass decisions in, never identities.
 
 **Done when:** the timestamp stops moving within a variant.
 

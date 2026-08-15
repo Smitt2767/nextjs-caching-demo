@@ -6,6 +6,10 @@ import {
   AttributesSkeleton,
 } from "@/app/_components/attributes-panel";
 import {
+  CachedHeroPanel,
+  CachedHeroSkeleton,
+} from "@/app/_components/cached-hero-panel";
+import {
   HeroExperimentPanel,
   HeroExperimentSkeleton,
 } from "@/app/_components/hero-experiment-panel";
@@ -269,6 +273,72 @@ export default function FlagsPage() {
           the whole subject of step 9 — put it one level too deep and it fires
           once per cache entry instead of once per visitor, with no error and a
           page that looks perfect.
+        </p>
+      </section>
+
+      <section
+        className="mt-9 max-w-4xl"
+        aria-labelledby="cached-hero-heading"
+        data-testid="cached-hero-section"
+      >
+        <div className="max-w-3xl">
+          <p
+            id="cached-hero-heading"
+            className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle"
+          >
+            Step 8 · cache the variant
+          </p>
+          <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
+            Three variants cost three renders, not fifty thousand
+          </h2>
+          <p className="mt-1 text-[14px] leading-relaxed text-ink-muted">
+            The same hero as above, but the rendering is cached with the{" "}
+            <strong className="text-ink">variant</strong> as the key rather than
+            the visitor. Deciding is per-person and nearly free — a hash and a
+            walk over rules already in memory. Rendering is per-variant and
+            expensive, so it is paid for once and shared by everyone who lands in
+            that variant.
+          </p>
+        </div>
+
+        <div className="mt-4 border border-line bg-surface-raised p-4">
+          <Suspense fallback={<CachedHeroSkeleton />}>
+            <CachedHeroPanel />
+          </Suspense>
+        </div>
+
+        <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+          The timestamp is the evidence. It is generated{" "}
+          <em>inside</em> the cached component, so it is part of the entry rather
+          than a description of it: reload and it does not move. Switch to a
+          persona in a different variant and you get a different frozen
+          timestamp — one entry per variant, each rendered once. A render costing{" "}
+          <code className="font-mono">600ms</code> is paid three times in total,
+          not once per visitor.
+        </p>
+
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
+          <code className="font-mono">use cache: remote</code>, not plain{" "}
+          <code className="font-mono">use cache</code>, and that distinction is
+          the most expensive thing this project has measured. Plain{" "}
+          <code className="font-mono">use cache</code> is an in-memory store
+          inside the server process — a real cache on a long-lived{" "}
+          <code className="font-mono">next start</code>, and no cache at all on
+          serverless, where the instance holding the entry is gone by the next
+          request. It looks identical locally.
+        </p>
+
+        <p className="mt-3 border-l-[3px] border-amber-500 bg-surface-raised py-2 pr-3 pl-3 text-[14px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">
+            Nothing about the visitor may go inside that component
+          </strong>{" "}
+          — and nothing stops you.{" "}
+          <code className="font-mono">cookies()</code> and{" "}
+          <code className="font-mono">headers()</code> are at least rejected
+          outright, but an id passed in as a prop is accepted silently: it joins
+          the cache key and quietly turns one entry per variant back into one
+          entry per visitor. The cache still &ldquo;works&rdquo;, the page still
+          looks right, and the saving is gone.
         </p>
       </section>
     </main>

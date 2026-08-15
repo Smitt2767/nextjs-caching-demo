@@ -19,7 +19,20 @@ export const CACHE_TAGS = {
   countryOffer: (code: CountryCode) => `country-offer-${code}` as const,
   /** `CachedCountryPanel` — cached markup, one entry per country. */
   countryPanel: (code: CountryCode) => `country-panel-${code}` as const,
+  /** `CachedHero` — rendered markup, one entry per experiment variant. */
+  heroVariant: (variant: string) => `hero-variant-${variant}` as const,
 } as const;
+
+/**
+ * The variants `hero-copy` can return, for building the tag list.
+ *
+ * Duplicated from the flag's declared `options` rather than imported, because
+ * `sdk.ts` pulls in `flags/next` and this module is read by the invalidation
+ * page's client bundle. If a fourth variation is added in GrowthBook, its
+ * markup simply has no button here until this list catches up — the cache still
+ * works, it just cannot be expired by hand.
+ */
+const HERO_VARIANTS = ["control", "urgency", "reassurance"] as const;
 
 export type TagDescriptor = {
   tag: string;
@@ -73,6 +86,11 @@ export const FLAGS_TAGS: TagDescriptor[] = [
     effect:
       "the flag payload is re-read from Edge Config on the next request, so a change made in GrowthBook shows up immediately",
   },
+  ...HERO_VARIANTS.map((variant) => ({
+    tag: CACHE_TAGS.heroVariant(variant),
+    label: `hero markup · ${variant}`,
+    effect: `the cached hero re-renders for ${variant} only — the other two variants keep their frozen timestamps`,
+  })),
 ];
 
 /** Every tag as a flat list — the allowlist the Server Action validates against. */

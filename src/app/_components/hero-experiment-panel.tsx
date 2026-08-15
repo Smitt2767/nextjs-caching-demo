@@ -1,28 +1,6 @@
 import { ArrivalTimer } from "@/app/_components/arrival-timer";
+import { HERO_COPY } from "@/lib/flags/hero-copy";
 import { heroCopy } from "@/lib/flags/sdk";
-
-/**
- * The three hero variants.
- *
- * Keyed by the string GrowthBook returns, so an unrecognised value falls back
- * rather than rendering nothing — someone can add a fourth variation in the UI
- * before the code knows about it, and a blank hero is a worse outcome than a
- * stale one.
- */
-const COPY: Record<string, { headline: string; body: string }> = {
-  control: {
-    headline: "Ship your side project this weekend",
-    body: "Everything you need, nothing you don't.",
-  },
-  urgency: {
-    headline: "Your competitors shipped last week",
-    body: "Stop planning. Start deploying. Today.",
-  },
-  reassurance: {
-    headline: "Take your time. We'll be here.",
-    body: "No credit card, no deadline, no pressure.",
-  },
-};
 
 /**
  * An A/B/C experiment, and the two mechanisms behind it.
@@ -42,7 +20,7 @@ const COPY: Record<string, { headline: string; body: string }> = {
  */
 export async function HeroExperimentPanel() {
   const variant = await heroCopy();
-  const copy = COPY[variant] ?? COPY.control;
+  const copy = HERO_COPY[variant] ?? HERO_COPY.control;
 
   return (
     <div data-testid="hero-experiment">

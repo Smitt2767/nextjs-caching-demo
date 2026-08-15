@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.6 (design study; steps 1–7 built, all flags on the Flags SDK) |
-| **Status** | In progress. Measurements M1–M9 recorded in §13.1. |
+| **Version** | 0.7 (design study; steps 1–8 built) |
+| **Status** | In progress. Measurements M1–M10 recorded in §13.1. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -771,18 +771,19 @@ ability to know whether a decision was right.
 
 ### 11.4 Sequencing
 
-Steps 1–7 are built. What remains, in order:
+Steps 1–8 are built; the rendered variant is cached by variant (M10). What
+remains, in order:
 
 1. **Exposure counter** (§11.3) — the correctness boundary, and the reason F1
    sits at the top of §12.
-2. **Cache the rendered variant**, keyed by variant rather than by visitor —
-   `use cache: remote`, for the reason RESEARCH.md §5.3 established.
-3. **Verification pass on deployed infrastructure** (§13.2). **Not locally.**
-   Several numbers in §13.1 are local and are known to mislead — M7's read
-   counts most of all, since Edge Config is replicated to the runtime on Vercel
-   and far cheaper there than the local figures suggest.
-4. **Per-visitor entitlement flag** in `use cache: private`.
-5. **Precompute** (Tier 2) — the only genuinely new structure, and the only one
+2. **Verification pass on deployed infrastructure** (§13.2). **Not locally.**
+   Several numbers in §13.1 are local and are known to mislead: M7's read counts,
+   since Edge Config is replicated to the runtime on Vercel and far cheaper there
+   than the local figures suggest — and M10's frozen timestamps, which would look
+   identical under plain `use cache`, a directive that caches nothing at all on
+   serverless.
+3. **Per-visitor entitlement flag** in `use cache: private`.
+4. **Precompute** (Tier 2) — the only genuinely new structure, and the only one
    that can fail outright. `FLAGS_SECRET` is required: `generatePermutations`
    throws at build time without it.
 
@@ -803,6 +804,7 @@ Steps 1–7 are built. What remains, in order:
 | **F9** | A `cacheLife` with `stale` under 5 min makes shell content unprerenderable, reported as an unrelated "uncached data" error | Medium | Build failure naming code that did not change | Keep `stale` ≥ 300 on anything in the static shell (§13.1 M3) |
 | **F10** | A flag rendered into the static shell shows its **old** value on first paint and corrects a moment later, whenever it changed since the shell was built | Medium | Visible flash; invisible on a fully static route, which is worse | Invalidate on change; or `await io()` to keep it out of the shell entirely (§13.1 M5) |
 | **F11** | A `Request` hoisted out of `flag(request)` to a module constant memoises the flag for the lifetime of the server process, outliving every invalidation | Medium | Nothing automated; the value simply stops changing | Construct the stand-in per call. Hoisting it looks like an optimisation and reviews like one (§13.1 M8) |
+| **F12** | A visitor-specific value passed as a prop into a variant-keyed cached component; one entry per variant silently becomes one per visitor | High | Nothing automated. Cache hit rates stay plausible; only the entry count reveals it | Pass decisions in, never identities. `cookies()`/`headers()` are blocked inside the scope but props are not (§13.1 M10) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -1171,6 +1173,44 @@ there will be much smaller than these numbers suggest — this is RESEARCH.md
 §5.3's lesson pointing the other way for once. The prerender failure above is
 not a matter of degree and holds everywhere.
 
+**M10. Caching by variant collapses N visitors into M renders.** **[measured]**
+
+The central claim of the project, and the first one where the result is a
+saving rather than a constraint. `CachedHero` takes the variant as its only
+argument, so the cache key is the variant; the decision that produced it stays
+outside the cached scope.
+
+Twelve requests from ten distinct visitor ids, against a hero costing 600ms to
+render:
+
+| Variant | Rendered at | Requests served |
+| --- | --- | --- |
+| `control` | `17:09:33.980Z` | 6 |
+| `urgency` | `17:09:41.470Z` | 4 |
+| `reassurance` | `17:09:42.099Z` | 2 |
+
+Three timestamps, frozen, one per variant — 12 requests, 3 renders. The
+timestamp is generated *inside* the cached component, so it is part of the entry
+rather than a report about it; a hit replays it unchanged.
+
+**What makes it work is the split**, not the directive. Deciding is per-visitor
+and nearly free — a hash and a walk over rules already in memory. Rendering is
+per-variant and expensive. `heroCopy()` is awaited in the wrapper and the result
+passed down as a prop, which is the same shape RND-NEXT-CACHE-001 §5.5 arrived
+at for the country slots: read the request data outside, pass the *decision* in.
+
+**The failure mode has no symptom.** Nothing prevents a visitor-specific value
+from entering that scope as a prop. `cookies()` and `headers()` are rejected
+outright, but an id passed in is accepted silently, joins the cache key, and
+turns one entry per variant back into one entry per visitor. The cache still
+reports hits, the page still renders correctly, and the saving is gone — the
+same family as F1, and the reason F12 exists.
+
+**Still local.** Plain `use cache` would produce this identical table on
+`next start` and cache nothing on Vercel (RND-NEXT-CACHE-001 §5.3). The
+directive here is `use cache: remote` for that reason, but the table above does
+not prove it — only the deployment can.
+
 ### 13.2 Claims still to verify
 
 The following must be measured on the deployed application, using the
@@ -1245,4 +1285,5 @@ Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
 | 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |
 | 0.4 | 15 Aug 2026 | Step 6 built; Flags SDK integrated alongside the existing path. M6 (an SDK flag cannot be in the shell) and M7 (the stock adapter reads the ruleset once per request) added. |
 | 0.5 | 15 Aug 2026 | Step 7: every flag moved onto the SDK, including the prerendered one. M8 (a reused `Request` memoises for the process lifetime) and M9 (the stock adapter cannot be prerendered at all) added. |
+| 0.7 | 15 Aug 2026 | Step 8 built: the rendered variant cached by variant. M10 added — 12 requests across 3 variants produced 3 renders — with risk F12 for the prop-shaped leak that would undo it. |
 | 0.6 | 15 Aug 2026 | Rewritten rather than amended. §1 and §11 restated from the current position instead of carrying three rounds of "superseded by" notes; §11.2 replaced with the route structure actually built; risk F11 added from M8. |
