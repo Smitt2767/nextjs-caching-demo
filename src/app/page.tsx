@@ -242,6 +242,131 @@ async function CacheDirectives() {
         </p>
       </div>
 
+      {/* The evidence for card 1's "watch out", and the reason card 2 exists.
+          Collapsed, because it is the proof rather than the claim. */}
+      <Disclosure
+        testId="serverless-finding-toggle"
+        label="the finding behind this"
+        hint="measured on Vercel · RESEARCH.md §5.3"
+      >
+        <p className="text-[13px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">
+            We deployed this page unchanged and the caching stopped working.
+          </strong>{" "}
+          Every panel that caches at request time went back to its full ~2s, on
+          every request. Nothing errored. The local test suite still passed.
+          Below is the same panel&apos;s cache timestamp, read six times in a
+          row — a value that holds still is a cache hit, one that moves is a
+          miss.
+        </p>
+
+        <div className="mt-3 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
+          {(
+            [
+              {
+                label: '"use cache"',
+                verdict: "six requests, six fresh renders",
+                ok: false,
+                rows: [
+                  "03:15:47.208Z",
+                  "03:15:49.988Z",
+                  "03:15:54.326Z",
+                  "03:15:57.329Z",
+                  "03:16:00.315Z",
+                  "03:16:03.085Z",
+                ],
+              },
+              {
+                label: '"use cache: remote"',
+                verdict: "computed once, reused by all six",
+                ok: true,
+                rows: [
+                  "03:35:35.538Z",
+                  "03:35:35.538Z",
+                  "03:35:35.538Z",
+                  "03:35:35.538Z",
+                  "03:35:35.538Z",
+                  "03:35:35.538Z",
+                ],
+              },
+            ] as const
+          ).map((col) => (
+            <div
+              key={col.label}
+              className="border border-line bg-surface-sunken p-3"
+            >
+              <p
+                className={`font-mono text-[11px] font-bold ${
+                  col.ok
+                    ? "text-emerald-700 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}
+              >
+                {col.label}
+              </p>
+              <ol className="mt-2 space-y-0.5 font-mono text-[11px] text-ink-muted">
+                {col.rows.map((ts, i) => (
+                  <li key={i} className="flex gap-3">
+                    <span className="text-ink-subtle">req {i + 1}</span>
+                    <span className={col.ok ? "text-ink" : undefined}>
+                      {ts}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2 border-t border-line pt-2 font-mono text-[11px] text-ink-subtle">
+                {col.verdict}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <dl className="mt-4 space-y-1.5 text-[13px] leading-relaxed">
+          {(
+            [
+              [
+                "Cause",
+                <>
+                  Plain <code className="font-mono">use cache</code> keeps
+                  entries in memory <em>inside one server process</em>. The
+                  framework&apos;s own docs put it plainly: on serverless,
+                  entries &ldquo;typically don&apos;t persist across requests
+                  (each request can be a different instance)&rdquo;, while a
+                  self-hosted server keeps them. A local{" "}
+                  <code className="font-mono">next start</code> is the second
+                  case. Vercel is the first.
+                </>,
+              ],
+              [
+                "Not hit",
+                <>
+                  The build-time panels were unaffected — they take no
+                  request-time input, so they are baked into the page and served
+                  from the edge. Only work deferred to request time, behind a{" "}
+                  <code className="font-mono">&lt;Suspense&gt;</code> boundary,
+                  landed in the cold instance.
+                </>,
+              ],
+              [
+                "Lesson",
+                <>
+                  A local server reports cache hits that production will not
+                  give you. Treat any caching figure measured locally as
+                  unverified until it is reproduced against a deployment.
+                </>,
+              ],
+            ] as const
+          ).map(([term, detail]) => (
+            <div key={term} className="flex flex-col gap-x-3 sm:flex-row">
+              <dt className="w-20 shrink-0 font-mono text-[11px] uppercase tracking-wider text-ink-subtle">
+                {term}
+              </dt>
+              <dd className="text-ink-muted">{detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </Disclosure>
+
       <Disclosure
         testId="directives-toggle"
         label="all three, side by side"
