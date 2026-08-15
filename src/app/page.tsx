@@ -29,27 +29,47 @@ async function TimingExplainer() {
           </span>{" "}
           badges
         </h2>
-        <div className="mt-2 grid gap-x-8 gap-y-2 text-[13px] leading-relaxed text-ink-muted md:grid-cols-2 xl:grid-cols-3">
-          <p>
-            Each panel shows roughly when its markup arrived, measured in the
-            browser from the start of the page load. They are here so the panels
-            can be <strong>compared with each other</strong> — that is the whole
-            job.
-          </p>
-          <p>
-            They are <strong>not</strong> real performance numbers. Not your
-            server&apos;s response time, not time-to-first-byte, and not what a
-            user would perceive as load time. Treat them as an audit aid for
-            this demo, and use the Performance panel or a Core Web Vitals tool
-            if you need figures that mean something outside it.
-          </p>
-          <p className="text-ink-subtle">
-            Read them on a <strong>fresh page load</strong>. After a client
-            navigation no new document is parsed, so the badges fall back to a
-            clock that started when you first opened the site — reload to get
-            clean numbers.
-          </p>
-        </div>
+
+        {/* Facts as labelled rows, not paragraphs. Each value runs the width
+            of the page, so nothing is squeezed into a narrow measure and the
+            whole block stays three lines tall. */}
+        <dl className="mt-3 space-y-1.5 text-[13px] leading-relaxed">
+          {(
+            [
+              [
+                "Measures",
+                <>
+                  roughly when a panel&apos;s markup arrived, timed in the
+                  browser from the start of the page load — so the panels can be
+                  compared against each other.
+                </>,
+              ],
+              [
+                "Is not",
+                <>
+                  server response time, time-to-first-byte, or what a user
+                  perceives as load time. Use the Performance panel for figures
+                  that mean anything outside this demo.
+                </>,
+              ],
+              [
+                "Read on",
+                <>
+                  a fresh page load. A client navigation parses no new document,
+                  so the badges fall back to the clock from when you first
+                  opened the site.
+                </>,
+              ],
+            ] as const
+          ).map(([term, detail]) => (
+            <div key={term} className="flex flex-col gap-x-3 sm:flex-row">
+              <dt className="w-20 shrink-0 font-mono text-[11px] uppercase tracking-wider text-ink-subtle">
+                {term}
+              </dt>
+              <dd className="text-ink-muted">{detail}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
 
       <Disclosure
@@ -57,28 +77,14 @@ async function TimingExplainer() {
         label="how it works"
         hint={snippet.file}
       >
-        <div className="grid gap-x-8 gap-y-3 text-[13px] leading-relaxed text-ink-muted md:grid-cols-2 xl:grid-cols-3">
-          <p>
-            An inline <code className="font-mono">&lt;script&gt;</code> sits
-            immediately after each badge. It runs while the browser is still
-            parsing that chunk of the document, so every panel is stamped as its
-            own markup arrives — shell chunks at parse time, a streamed slot
-            when its chunk lands.
-          </p>
-          <p>
-            <strong className="text-ink">Why not a useEffect.</strong> Effects
-            all run in the same commit once React has hydrated. Every panel
-            already on screen then reports the <em>same</em> number, and the
-            cached slots become indistinguishable from the static ones — which
-            is exactly the difference this page exists to show. The parse-time
-            reading separates them.
-          </p>
-          <p className="text-ink-subtle">
-            It measures when markup arrived and was parsed, a hair before the
-            browser paints it. Good for ranking these panels against each other;
-            not an absolute figure.
-          </p>
-        </div>
+        <p className="max-w-4xl text-[13px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">Why not a useEffect.</strong> Effects all
+          run in the same commit once React has hydrated, so every panel already
+          on screen reports the <em>same</em> number and the cached slots become
+          indistinguishable from the static ones — exactly the difference this
+          page exists to show. An inline script runs while the browser is still
+          parsing that chunk, so each panel is stamped as its own markup lands.
+        </p>
 
         <p className="mt-4 mb-2 font-mono text-[11px] text-ink-subtle">
           {snippet.point}

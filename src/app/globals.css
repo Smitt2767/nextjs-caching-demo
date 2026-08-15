@@ -24,13 +24,13 @@
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #0a0a0a;
-    --surface-raised: #141414;
-    --surface-sunken: #0f0f0f;
+    --surface: #000000; /* pitch black */
+    --surface-raised: #0d0d0d; /* cards, just lifted off the page */
+    --surface-sunken: #080808; /* code wells */
     --ink: #fafafa;
-    --ink-muted: #d4d4d4; /* 12.6:1 on --surface-raised */
-    --ink-subtle: #a3a3a3; /* 7.3:1 on --surface-raised */
-    --line: #2a2a2a;
+    --ink-muted: #d4d4d4; /* 14.2:1 on --surface-raised */
+    --ink-subtle: #a3a3a3; /* 7.7:1 on --surface-raised */
+    --line: #262626; /* must read against pure black */
     --ring: #fafafa;
   }
 }

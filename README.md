@@ -364,9 +364,11 @@ design variables for this style specify `border-radius: 0` and `shadow: none`.
   them to match looked tidier, but expanding one card's disclosure then grew
   the whole row and slid its neighbours' toggles out from under the cursor.
   Ragged bottoms are worth avoiding that.
-- **Long prose runs in columns rather than one narrow measure.** The index's
-  explainer is three columns on desktop: full width, still readable, and about
-  half the height it was stacked.
+- **Explanatory text is compressed into labelled rows, not paragraphs.** The
+  index's explainer is three `LABEL — value` lines using the full width. Two
+  earlier attempts were worse: a narrow column wasted the screen, and splitting
+  the paragraphs into columns was harder to read than either. Dense and
+  scannable beats laid-out-nicely for reference text.
 - **Type** is IBM Plex Sans with JetBrains Mono for timings, tags and code,
   loaded through `next/font` so they self-host with no layout shift.
 
