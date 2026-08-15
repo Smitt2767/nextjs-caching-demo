@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 
-import { ALL_PPR_TAGS } from "@/lib/cache-tags";
+import { ALL_TAGS } from "@/lib/cache-tags";
 
 export type InvalidateResult = {
   ok: boolean;
@@ -36,7 +36,7 @@ export async function invalidateTagAction(
   // Validate against the known list rather than expiring whatever arrives:
   // a Server Action is a public endpoint, and this one would otherwise let a
   // caller expire any tag in the app.
-  if (!ALL_PPR_TAGS.includes(tag)) {
+  if (!ALL_TAGS.includes(tag)) {
     return result(false, "updateTag", `Unknown tag: ${tag || "(empty)"}`);
   }
 
@@ -45,7 +45,7 @@ export async function invalidateTagAction(
   return result(
     true,
     "updateTag",
-    `Expired "${tag}". The next request to /ppr recomputes just that entry.`,
+    `Expired "${tag}". The next request recomputes just that entry.`,
   );
 }
 

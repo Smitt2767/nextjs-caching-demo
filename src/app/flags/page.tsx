@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 
 import {
@@ -146,19 +147,32 @@ export default function FlagsPage() {
 
         <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
           View source rather than the element inspector: the value is in the
-          HTML the server sent, not something the browser fetched. Toggle it in
-          GrowthBook and it lands within 30 seconds.
+          HTML the server sent, not something the browser fetched.
         </p>
-        <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
-          That 30 seconds is polling, not notification. A webhook would make it
-          near-instant, and{" "}
+
+        <p className="mt-3 border-l-[3px] border-amber-500 bg-surface-raised py-2 pr-3 pl-3 text-[14px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">
+            Changed this flag in GrowthBook and the page still shows the old
+            value?
+          </strong>{" "}
+          That is the cache doing its job, not a bug. The ruleset is cached for
+          hours like any other content. Expire it on{" "}
+          <Link
+            href="/invalidate"
+            className="font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+          >
+            /invalidate
+          </Link>{" "}
+          — the <code className="font-mono">growthbook-payload</code> button —
+          and the next request re-reads it.
+        </p>
+
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-subtle">
+          In production a webhook would press that button for you, and{" "}
           <code className="font-mono">/api/growthbook-webhook</code> is built and
-          tested — but GrowthBook&apos;s free plan allows{" "}
-          <strong className="text-ink">one SDK webhook per organisation</strong>,
-          and Vercel&apos;s Edge Config sync already occupies it. Since a ruleset
-          read through Edge Config is a replicated local read rather than a
-          network hop, polling every 30s is cheap enough that this is a
-          reasonable place to stop.
+          tested for it. GrowthBook&apos;s free plan allows one SDK webhook per
+          organisation and Vercel&apos;s Edge Config sync already holds it, so
+          here the button is the mechanism.
         </p>
       </section>
     </main>

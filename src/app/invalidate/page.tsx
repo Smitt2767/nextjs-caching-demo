@@ -4,7 +4,7 @@ import {
   RevalidatePathButton,
   TagButtons,
 } from "@/app/_components/invalidate-controls";
-import { COUNTRY_TAGS, SHARED_TAGS } from "@/lib/cache-tags";
+import { COUNTRY_TAGS, FLAGS_TAGS, SHARED_TAGS } from "@/lib/cache-tags";
 
 export const metadata = {
   title: "Invalidate caches",
@@ -132,6 +132,49 @@ export default function InvalidatePage() {
           <code className="font-mono">use cache: private</code> slot. It is held
           in your browser, not on the server, so no server-side invalidation can
           reach it — reload the page to clear it.
+        </p>
+      </section>
+
+      <section aria-labelledby="flags-heading" className="flex flex-col gap-3">
+        <div>
+          <h2
+            id="flags-heading"
+            className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle"
+          >
+            /flags
+          </h2>
+          <p className="mt-1 text-[15px] text-ink-muted">
+            <Link
+              href="/flags"
+              data-testid="invalidate-flags-demo-link"
+              className="font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+            >
+              Feature flags &amp; experiments
+            </Link>
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+          <Group
+            title="The GrowthBook ruleset"
+            hint={
+              <>
+                The flag payload is cached like any other content, so a change
+                made in GrowthBook is not visible until that entry expires.
+                Expire it here and the next request re-reads it.
+              </>
+            }
+          >
+            <TagButtons tags={FLAGS_TAGS} />
+          </Group>
+        </div>
+
+        <p className="text-[14px] leading-relaxed text-ink-subtle">
+          A webhook would normally do this automatically. GrowthBook&apos;s free
+          plan allows one SDK webhook per organisation and Vercel&apos;s Edge
+          Config sync already holds it, so on this demo the button is the
+          mechanism. <code className="font-mono">/api/growthbook-webhook</code>{" "}
+          is built and tested for the day there is a slot to point at it.
         </p>
       </section>
     </main>

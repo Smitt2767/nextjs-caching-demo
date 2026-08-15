@@ -1,4 +1,5 @@
 import { COUNTRY_CODES, type CountryCode } from "@/lib/countries";
+import { RULESET_TAG } from "@/lib/flags/ruleset";
 
 /**
  * Every cache tag on /ppr, in one place.
@@ -64,8 +65,19 @@ export const COUNTRY_TAGS: { code: CountryCode; tags: TagDescriptor[] }[] =
     ],
   }));
 
+/** Tags belonging to /flags. */
+export const FLAGS_TAGS: TagDescriptor[] = [
+  {
+    tag: RULESET_TAG,
+    label: "GrowthBook ruleset",
+    effect:
+      "the flag payload is re-read from Edge Config on the next request, so a change made in GrowthBook shows up immediately",
+  },
+];
+
 /** Every tag as a flat list — the allowlist the Server Action validates against. */
-export const ALL_PPR_TAGS: string[] = [
+export const ALL_TAGS: string[] = [
   ...SHARED_TAGS.map((t) => t.tag),
   ...COUNTRY_TAGS.flatMap((c) => c.tags.map((t) => t.tag)),
+  ...FLAGS_TAGS.map((t) => t.tag),
 ];

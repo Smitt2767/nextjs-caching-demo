@@ -49,25 +49,20 @@ const FAILURE_LIFE = { stale: 300, revalidate: 30, expire: 300 };
 /**
  * The cache profile for a successful read.
  *
- * `revalidate: 30` rather than `cacheLife("minutes")` because the webhook that
- * was supposed to make this a ceiling is not available: GrowthBook's free plan
- * allows **one SDK webhook per organisation**, and Vercel's Edge Config sync
- * already holds it. So a flag change lands within 30 seconds by polling instead
- * of within one second by notification.
+ * Long, deliberately. The webhook that would normally expire this on a flag
+ * change is unavailable — GrowthBook's free plan allows one SDK webhook per
+ * organisation and Vercel's Edge Config sync already holds it — but shortening
+ * the cache to compensate would mean polling a service that rarely changes, and
+ * would blur the very thing this project measures.
  *
- * The cost of that is one small ruleset read per instance per 30s — through
- * Edge Config on Vercel, which is a replicated local read rather than a network
- * hop. Cheap enough that the webhook is a nicety here rather than a necessity.
+ * So invalidation is explicit instead: the `growthbook-payload` button on
+ * /invalidate. On a demo that is better than a timer, because the moment the
+ * value changes is a moment you chose.
  *
- * `stale` stays at 300 for the reason in `FAILURE_LIFE`: under five minutes and
- * this scope stops being eligible for the static shell, which fails the build
- * with an error that names something else entirely.
- *
- * `src/app/api/growthbook-webhook/route.ts` still exists and still works — it
- * simply has nothing pointed at it. Given a webhook slot, it takes over and
- * this becomes the backstop it was meant to be.
+ * `src/app/api/growthbook-webhook/route.ts` is built and tested and simply has
+ * nothing pointed at it. Given a webhook slot it takes over, unchanged.
  */
-const SUCCESS_LIFE = { stale: 300, revalidate: 30, expire: 3600 };
+const SUCCESS_LIFE = "hours";
 
 export type RulesetSource = "edge-config" | "growthbook-cdn";
 

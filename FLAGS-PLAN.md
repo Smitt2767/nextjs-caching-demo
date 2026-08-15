@@ -12,8 +12,8 @@ shaped this way. You don't need it to follow along.
 
 ## The 11 steps
 
-**Done so far: 1, 2, 3, and 4** — step 4 with a caveat, since the webhook it
-wanted is not available on the free plan. Findings are in `RESEARCH-FLAGS.md`
+**Done so far: 1, 2, 3, 4.** Step 4 landed as a button rather than a webhook —
+the free plan has no webhook slot to spare. Findings are in `RESEARCH-FLAGS.md`
 §13.1; two of them were build-breaking surprises worth reading first.
 
 | # | Step | GrowthBook needed? | |
@@ -21,7 +21,7 @@ wanted is not available on the free plan. Findings are in `RESEARCH-FLAGS.md`
 | 1 | Anonymous visitor ID | no | ✅ |
 | 2 | Targeting attributes + persona switcher | no | ✅ |
 | 3 | Connect GrowthBook, one simple flag | **yes** — first setup | ✅ |
-| 4 | Faster flag changes (30s, by polling) | webhook blocked — free plan | ⚠️ |
+| 4 | Invalidate the ruleset on demand | webhook blocked — free plan | ✅ |
 | 5 | Targeting: a flag that varies by country | **yes** — small |  |
 | 6 | First experiment: 3 variants | **yes** — small |  |
 | 7 | Cache the variant | no |  |
@@ -209,9 +209,9 @@ Check the environment toggle before you check anything else.
 
 **Goal.** Cut the wait between flipping a flag and seeing it.
 
-**Outcome: 30 seconds, by polling.** The webhook that would have made it instant
-is not available on the free plan — see below. The handler is written and tested
-and will take over the moment a slot exists.
+**Outcome: a button on `/invalidate`.** The webhook that would have done this
+automatically is not available on the free plan — see below. The handler is
+written and tested and will take over the moment a slot exists.
 
 ### What blocked it
 
@@ -232,23 +232,23 @@ Two alternatives were checked and neither helps:
 
 ### What we did instead
 
-```ts
-// src/lib/flags/ruleset.ts
-cacheLife({ stale: 300, revalidate: 30, expire: 3600 });
-```
+The ruleset keeps a normal `cacheLife("hours")` and gets a
+`growthbook-payload` button on `/invalidate`, alongside the existing /ppr tags.
 
-A flag change lands within 30 seconds. The cost is one ruleset read per instance
-per 30s — and through Edge Config on Vercel that is a replicated local read, not
-a network hop, so it is close to free. `stale` stays at 300 because anything
-lower makes this scope ineligible for the static shell (`RESEARCH-FLAGS.md`
-§13.1 M3).
+Shortening the cache to poll instead was the obvious alternative and is the
+wrong trade here: it means polling a service that changes a few times a week,
+and it blurs exactly the thing this project measures. An explicit button is also
+a better demo — the moment the value changes is a moment you chose.
+
+`/flags` carries a note pointing at it, because "I changed the flag and nothing
+happened" is otherwise indistinguishable from a bug.
 
 ### The handler, if you ever get a slot
 
 `src/app/api/growthbook-webhook/route.ts` is complete. Point a webhook at
-`/api/growthbook-webhook`, format **Standard (no SDK payload)**, put the shared
-secret in `GROWTHBOOK_WEBHOOK_SECRET`, and drop the `revalidate` back to
-`minutes`.
+`/api/growthbook-webhook`, format **Standard (no SDK payload)**, and put the
+shared secret in `GROWTHBOOK_WEBHOOK_SECRET`. Nothing else changes — it expires
+the same tag the button does.
 
 It follows Standard Webhooks — HMAC-SHA256 over `{id}.{timestamp}.{body}`,
 base64, against the `v1,`-prefixed header — with two deliberate departures from
@@ -270,7 +270,9 @@ zero ruleset re-reads, three after produced two.
 **Test:**
 
 - [ ] Flip `catalog-kill-switch` in GrowthBook
-- [ ] Reload `/flags` after ~30s → shows the new value
+- [ ] Reload `/flags` → still the old value (the cache is working)
+- [ ] Press `growthbook-payload` on `/invalidate`
+- [ ] Reload `/flags` → the new value
 
 **Done when:** a flag flip appears without a deploy.
 
