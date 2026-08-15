@@ -51,7 +51,7 @@ export function CatalogList({
   testId: string;
 }) {
   return (
-    <ul data-testid={testId} className="space-y-2 text-[13px]">
+    <ul data-testid={testId} className="space-y-2 text-[14px]">
       {entries.map((entry) => (
         <li key={entry.name}>
           <span className="font-medium text-ink">{entry.name}</span>

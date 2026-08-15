@@ -12,8 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // The e2e rig's build output (see distDir in next.config.ts).
-    ".next-e2e/**",
+    // Any alternate build output. `distDir` is set from NEXT_DIST_DIR (see
+    // next.config.ts), so throwaway builds land in siblings like `.next-e2e`
+    // or `.next-check`. Without this they get linted as source and bury the
+    // real findings under thousands of generated-code warnings.
+    ".next-*/**",
   ]),
   {
     rules: {

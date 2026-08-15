@@ -21,7 +21,7 @@ export function StatusLine({
   // reported its state in amber. The words already say hit or miss; emphasis
   // here is weight, not colour.
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px]">
+    <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[12px]">
       <span className="bg-ink px-1.5 py-0.5 font-bold text-surface-raised">
         <ArrivalTimer id={timerId} />
       </span>
@@ -54,21 +54,21 @@ export function OfferBody({
 }) {
   return (
     <div data-testid={testId} data-country={offer.code}>
-      <p className="text-[13px] text-ink-subtle">
+      <p className="text-[14px] text-ink-subtle">
         {offer.greeting} — <span aria-hidden="true">{offer.flag}</span>{" "}
         {offer.label}
       </p>
       <h4 className="mt-0.5 text-base font-semibold leading-tight text-ink">
         {offer.headline}
       </h4>
-      <dl className="mt-3 space-y-2 text-[13px]">
+      <dl className="mt-3 space-y-2 text-[14px]">
         {[
           ["price", offer.price, `${testId}-price`],
           ["shipping", offer.shipping, undefined],
           ["support", offer.support, undefined],
         ].map(([term, value, id]) => (
           <div key={term} className="flex justify-between gap-3">
-            <dt className="font-mono text-[11px] text-ink-subtle">{term}</dt>
+            <dt className="font-mono text-[12px] text-ink-subtle">{term}</dt>
             <dd className="text-right font-medium text-ink" data-testid={id}>
               {value}
             </dd>
@@ -97,7 +97,7 @@ export function SlotSkeleton({
 
   return (
     <div data-testid={testId}>
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px]">
+      <div className="mb-3 flex items-center gap-2 font-mono text-[12px]">
         <span className="bg-ink/10 px-1.5 py-0.5 text-ink-subtle dark:bg-white/10">
           waiting ≤{COUNTRY_FETCH_DELAY_MS}ms
         </span>

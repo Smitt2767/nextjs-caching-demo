@@ -96,14 +96,14 @@ export async function SlotCard({
       <header className="p-4 pl-5">
         <div className="min-w-0 flex-1">
           <span
-            className={`inline-block px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${styles.chip}`}
+            className={`inline-block px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase tracking-wider ${styles.chip}`}
           >
             {styles.label}
           </span>
-          <h3 className="mt-2 text-[15px] font-semibold leading-tight text-ink">
+          <h3 className="mt-2 text-[16px] font-semibold leading-tight text-ink">
             {title}
           </h3>
-          <p className="mt-1 text-[13px] leading-snug text-ink-muted">
+          <p className="mt-1 text-[14px] leading-snug text-ink-muted">
             {summary}
           </p>
         </div>
@@ -117,7 +117,7 @@ export async function SlotCard({
           testId={`about-toggle-${snippetId}`}
           label="what this shows"
         >
-          <div className="space-y-2 text-[13px] leading-relaxed text-ink-muted">
+          <div className="space-y-2 text-[14px] leading-relaxed text-ink-muted">
             {description}
           </div>
         </Disclosure>
@@ -126,7 +126,7 @@ export async function SlotCard({
           label="show code"
           hint={snippet.file}
         >
-          <p className="mb-2 font-mono text-[11px] text-ink-subtle">
+          <p className="mb-2 font-mono text-[12px] text-ink-subtle">
             {snippet.point}
           </p>
           <div className="overflow-x-auto border border-line bg-surface-sunken">

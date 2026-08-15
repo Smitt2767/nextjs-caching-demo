@@ -23,8 +23,8 @@ function Group({
 }) {
   return (
     <div className="border border-line bg-surface-raised p-5">
-      <h4 className="text-[15px] font-semibold text-ink">{title}</h4>
-      <p className="mt-1 mb-4 text-[13px] leading-relaxed text-ink-muted">
+      <h4 className="text-[16px] font-semibold text-ink">{title}</h4>
+      <p className="mt-1 mb-4 text-[14px] leading-relaxed text-ink-muted">
         {hint}
       </p>
       {children}
@@ -42,16 +42,10 @@ export default function InvalidatePage() {
   return (
     <main className="flex w-full flex-1 flex-col gap-6 px-4 py-5">
       <header data-testid="invalidate-shell">
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle hover:text-ink"
-        >
-          ← all demos
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           Invalidate caches
         </h1>
-        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-muted">
+        <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-ink-muted">
           Expire a single cache entry by tag, or throw away everything on a
           route. Then open the demo and watch which panels pay for their work
           again — the ones you did not invalidate keep their frozen timestamps.
@@ -62,11 +56,11 @@ export default function InvalidatePage() {
         <div>
           <h2
             id="ppr-heading"
-            className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-subtle"
+            className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle"
           >
             /ppr
           </h2>
-          <p className="mt-1 text-[14px] text-ink-muted">
+          <p className="mt-1 text-[15px] text-ink-muted">
             <Link
               href="/ppr"
               data-testid="invalidate-ppr-demo-link"
@@ -107,7 +101,7 @@ export default function InvalidatePage() {
             <div className="space-y-3">
               {COUNTRY_TAGS.map(({ code, tags }) => (
                 <div key={code}>
-                  <p className="mb-1.5 font-mono text-[11px] font-bold text-ink">
+                  <p className="mb-1.5 font-mono text-[12px] font-bold text-ink">
                     {code}
                   </p>
                   <TagButtons tags={tags} />
@@ -133,7 +127,7 @@ export default function InvalidatePage() {
           </Group>
         </div>
 
-        <p className="text-[13px] leading-relaxed text-ink-subtle">
+        <p className="text-[14px] leading-relaxed text-ink-subtle">
           One thing none of these touch: the sky{" "}
           <code className="font-mono">use cache: private</code> slot. It is held
           in your browser, not on the server, so no server-side invalidation can

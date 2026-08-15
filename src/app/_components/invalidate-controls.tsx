@@ -18,7 +18,7 @@ function Receipt({
 }) {
   if (pending) {
     return (
-      <p className="mt-3 font-mono text-[11px] text-ink-subtle">working…</p>
+      <p className="mt-3 font-mono text-[12px] text-ink-subtle">working…</p>
     );
   }
   if (!state) return null;
@@ -27,7 +27,7 @@ function Receipt({
     <p
       data-testid="invalidate-receipt"
       data-ok={state.ok}
-      className={`mt-3 font-mono text-[11px] leading-relaxed ${
+      className={`mt-3 font-mono text-[12px] leading-relaxed ${
         state.ok ? "text-ink" : "text-red-600 dark:text-red-400"
       }`}
     >
@@ -54,7 +54,7 @@ export function TagButtons({ tags }: { tags: TagDescriptor[] }) {
               disabled={pending}
               title={t.effect}
               data-testid={`invalidate-${t.tag}`}
-              className="min-h-11 cursor-pointer border border-line bg-surface px-3 font-mono text-[11px] text-ink hover:border-ink-subtle disabled:opacity-50"
+              className="min-h-11 cursor-pointer border border-line bg-surface px-3 font-mono text-[12px] text-ink hover:border-ink-subtle disabled:opacity-50"
             >
               {t.label}
             </button>
@@ -80,7 +80,7 @@ export function RevalidatePathButton() {
           type="submit"
           disabled={pending}
           data-testid="invalidate-ppr-path"
-          className="min-h-11 cursor-pointer border border-red-500/50 bg-red-500/5 px-4 font-mono text-[11px] font-bold text-ink hover:border-red-500 disabled:opacity-50"
+          className="min-h-11 cursor-pointer border border-red-500/50 bg-red-500/5 px-4 font-mono text-[12px] font-bold text-ink hover:border-red-500 disabled:opacity-50"
         >
           revalidatePath(&quot;/ppr&quot;)
         </button>

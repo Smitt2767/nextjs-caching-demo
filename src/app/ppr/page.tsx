@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { ArrivalTimer } from "@/app/_components/arrival-timer";
@@ -15,6 +14,7 @@ import {
 } from "@/app/_components/private-cached";
 import { SlotCard } from "@/app/_components/slot-card";
 import { SlotSkeleton, StatusLine } from "@/app/_components/slot-body";
+import { TimingExplainer } from "@/app/_components/timing-explainer";
 import { getCatalog } from "@/lib/catalog";
 
 // Cached with `use cache` and free of request-time input, so it is prerendered
@@ -43,13 +43,13 @@ function SectionHeading({
 }) {
   return (
     <div className="max-w-3xl">
-      <p className="font-mono text-[11px] font-medium uppercase tracking-wider text-ink-subtle">
+      <p className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle">
         {eyebrow}
       </p>
       <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
         {title}
       </h2>
-      <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+      <p className="mt-1 text-[14px] leading-relaxed text-ink-muted">
         {children}
       </p>
     </div>
@@ -65,16 +65,10 @@ export default function PprDemo() {
   return (
     <main className="w-full flex-1 px-4 py-5">
       <header data-testid="ppr-shell">
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center font-mono text-[11px] text-ink-subtle hover:text-ink"
-        >
-          ← all demos
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
           What&apos;s in the shell, what streams in
         </h1>
-        <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-muted">
+        <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-ink-muted">
           Eight slots on one page. Each card&apos;s frame, title and notes are
           prerendered — only the region inside it can stream. Every slot reports{" "}
           <span className="font-mono text-ink">rendered @Nms</span>: when that
@@ -100,14 +94,20 @@ export default function PprDemo() {
                 aria-hidden="true"
                 className={`h-2 w-2 shrink-0 translate-y-px ${dot}`}
               />
-              <dt className="font-mono text-[11px] font-bold text-ink">
+              <dt className="font-mono text-[12px] font-bold text-ink">
                 {term}
               </dt>
-              <dd className="text-[13px] text-ink-muted">{desc}</dd>
+              <dd className="text-[14px] text-ink-muted">{desc}</dd>
             </div>
           ))}
         </dl>
       </header>
+
+      {/* The caveat about the badges, next to the badges. One line visible;
+          the rest behind the toggle, because it is read once. */}
+      <div className="mt-4">
+        <TimingExplainer />
+      </div>
 
       <section className="mt-7" aria-labelledby="shell-heading">
         <div id="shell-heading">
@@ -426,7 +426,7 @@ export default function PprDemo() {
         </div>
       </section>
 
-      <p className="mt-8 max-w-3xl border-t border-line pt-4 font-mono text-[11px] leading-relaxed text-ink-subtle">
+      <p className="mt-8 max-w-3xl border-t border-line pt-4 font-mono text-[12px] leading-relaxed text-ink-subtle">
         Every wrapper on this page is in the initial HTML response — open
         DevTools → Network → the <span className="text-ink">/ppr</span> document
         and read it. Only the slot bodies arrive later.{" "}

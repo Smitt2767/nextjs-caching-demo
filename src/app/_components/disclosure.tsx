@@ -57,7 +57,7 @@ export function Disclosure({
         aria-controls={panelId}
         data-testid={testId}
         // min-h-11 == 44px, the minimum comfortable touch target.
-        className="flex min-h-11 w-full cursor-pointer items-center gap-2 px-4 text-left font-mono text-[11px] text-ink-subtle hover:bg-black/[.04] hover:text-ink dark:hover:bg-white/[.05]"
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 px-4 text-left font-mono text-[12px] text-ink-subtle hover:bg-black/[.04] hover:text-ink dark:hover:bg-white/[.05]"
       >
         <Chevron open={open} />
         {/* The label never wraps; the file path takes the truncation instead,

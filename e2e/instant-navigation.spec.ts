@@ -165,8 +165,10 @@ test.describe("index", () => {
     await expect(page.getByTestId("ppr-link")).toHaveAttribute("href", "/ppr");
   });
 
+  // The explainer sits on /ppr, beside the badges it describes, rather than on
+  // the index — a caveat about an instrument belongs with the instrument.
   test("explains the timing badges behind a collapsible", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/ppr");
 
     const explainer = page.getByTestId("timing-explainer");
     await expect(explainer).toBeVisible();
@@ -220,7 +222,11 @@ test.describe("static wrappers", () => {
           await expect(page.getByTestId(`code-toggle-${id}`)).toBeVisible();
         }
         // Highlighted server-side, so the code is in the document too.
-        await expect(page.locator(".shiki")).toHaveCount(CARD_IDS.length);
+        // Scoped to the cards: the page carries other prerendered snippets
+        // (the timing explainer's), and this assertion is about the cards.
+        await expect(page.locator('[data-testid^="card-"] .shiki')).toHaveCount(
+          CARD_IDS.length,
+        );
       },
       { baseURL },
     );
@@ -458,12 +464,16 @@ test.describe("use cache: private", () => {
     ]);
 
     // Arrive once so the browser holds the private result.
-    await page.goto("/ppr");
+    await page.goto("/");
+    await page.getByTestId("ppr-link").click();
+    await page.waitForURL((url) => url.pathname === "/ppr");
     await expect(slot(page, "private-component-slot")).toBeVisible();
 
-    // Leave with the client router — no document load, so browser memory
-    // survives.
-    await page.getByRole("link", { name: "← all demos" }).click();
+    // Leave with browser back. The App Router handles popstate as a client
+    // navigation, so no document is loaded and browser memory survives — which
+    // is the precondition this test depends on. The pages carry no back link
+    // of their own.
+    await page.goBack();
     await page.waitForURL((url) => url.pathname === "/");
 
     // The navigation back must happen INSIDE instant(), otherwise the lock is
