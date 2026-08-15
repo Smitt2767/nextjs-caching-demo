@@ -100,6 +100,167 @@ async function TimingExplainer() {
 }
 
 /**
+ * The three cache directives, and which one a given piece of work wants.
+ *
+ * On the index rather than inside /ppr because it is the decision every demo
+ * below is an instance of. Static for the same reason as the explainer above:
+ * `highlight()` is cached and takes a constant.
+ */
+const DIRECTIVES = [
+  {
+    name: '"use cache"',
+    rail: "bg-violet-500",
+    accent: "text-violet-700 dark:text-violet-400",
+    stored: "This server process's memory",
+    useFor: (
+      <>
+        Work with <strong className="text-ink">no request-time input</strong> —
+        plan tables, navigation, marketing copy. It is computed at build time,
+        baked into the page and served from the edge, which makes it the
+        cheapest option on this list.
+      </>
+    ),
+    watch: (
+      <>
+        At <em>request</em> time on serverless it caches nothing. Entries live
+        in one instance&apos;s memory and the next request may land on another.
+        Confirmed on Vercel: six consecutive requests, six fresh renders.
+      </>
+    ),
+  },
+  {
+    name: '"use cache: remote"',
+    rail: "bg-amber-500",
+    accent: "text-amber-700 dark:text-amber-400",
+    stored: "A shared store every instance can reach",
+    useFor: (
+      <>
+        Anything cached{" "}
+        <strong className="text-ink">at request time</strong> — in practice,
+        everything behind a <code className="font-mono">&lt;Suspense&gt;</code>{" "}
+        boundary that depends on a cookie, header or search param. Still shared
+        by every visitor.
+      </>
+    ),
+    watch: (
+      <>
+        Costs a network round trip per lookup, plus platform fees. Entries do
+        not survive a deploy — the cache key includes the build ID, so the first
+        request after each release pays full price.
+      </>
+    ),
+  },
+  {
+    name: '"use cache: private"',
+    rail: "bg-sky-500",
+    accent: "text-sky-700 dark:text-sky-400",
+    stored: "The visitor's browser. Never the server.",
+    useFor: (
+      <>
+        The one step that is genuinely{" "}
+        <strong className="text-ink">per visitor</strong>, which is usually just
+        reading an identifier. It is the only directive permitted to call{" "}
+        <code className="font-mono">cookies()</code> inside itself.
+      </>
+    ),
+    watch: (
+      <>
+        It has no server-side cache at all. Wrap something expensive in it and
+        every visitor pays for it in full, every time — measured at{" "}
+        <strong className="text-ink">~2031ms</strong> against{" "}
+        <strong className="text-ink">~105ms</strong> for the same work moved
+        one level out.
+      </>
+    ),
+  },
+] as const;
+
+async function CacheDirectives() {
+  const snippet = SNIPPETS.directives;
+  const html = await highlight(snippet.code);
+
+  return (
+    <section
+      data-testid="directives-explainer"
+      className="border border-line bg-surface-raised"
+    >
+      <div className="p-5">
+        <h2 className="text-base font-semibold text-ink">
+          Which <code className="font-mono">use cache</code> to reach for
+        </h2>
+        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+          Three directives, and the only thing separating them is{" "}
+          <strong className="text-ink">where the answer is kept</strong>. Pick
+          by asking what the work depends on, not by how slow it is.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {DIRECTIVES.map((d) => (
+            <article
+              key={d.name}
+              data-testid={`directive-${d.name.replace(/\W+/g, "-")}`}
+              className="relative border border-line bg-surface p-4 pl-5"
+            >
+              <span
+                aria-hidden="true"
+                className={`absolute inset-y-0 left-0 w-[3px] ${d.rail}`}
+              />
+              <h3
+                className={`font-mono text-[12px] font-bold tracking-tight ${d.accent}`}
+              >
+                {d.name}
+              </h3>
+              <p className="mt-1 text-[12px] leading-relaxed text-ink-subtle">
+                {d.stored}
+              </p>
+
+              <dl className="mt-3 space-y-2.5 text-[13px] leading-relaxed">
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-wider text-ink-subtle">
+                    Use for
+                  </dt>
+                  <dd className="mt-0.5 text-ink-muted">{d.useFor}</dd>
+                </div>
+                <div>
+                  <dt className="font-mono text-[11px] uppercase tracking-wider text-ink-subtle">
+                    Watch out
+                  </dt>
+                  <dd className="mt-0.5 text-ink-muted">{d.watch}</dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+
+        {/* The takeaway, stated once. Both mistakes above are the intuitive
+            choice, and neither produces an error. */}
+        <p className="mt-4 border-l-[3px] border-line pl-3 text-[13px] leading-relaxed text-ink-muted">
+          <strong className="text-ink">The rule.</strong> What is expensive
+          should be shared; what is personal should be cheap. Both ways of
+          getting this wrong fail silently — no error, no warning, and a local
+          server reports cache hits for all three.
+        </p>
+      </div>
+
+      <Disclosure
+        testId="directives-toggle"
+        label="all three, side by side"
+        hint={snippet.file}
+      >
+        <p className="mt-1 mb-2 font-mono text-[11px] text-ink-subtle">
+          {snippet.point}
+        </p>
+        <div className="overflow-x-auto border border-line bg-surface-sunken">
+          {/* Highlighted server-side by Shiki; the input is a constant in the
+              repo, never user input. */}
+          <div dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+      </Disclosure>
+    </section>
+  );
+}
+
+/**
  * Index. Fully static: no runtime reads, so it prerenders whole and the
  * <Link> below prefetches /ppr's App Shell before the click. That is what
  * makes the navigation into the demo instant.
@@ -122,6 +283,7 @@ export default function Home() {
       {/* Preamble: applies to every demo below, so it sits above the list —
           which grows downward as demos are added. */}
       <TimingExplainer />
+      <CacheDirectives />
 
       <section aria-labelledby="demos-heading">
         <h2

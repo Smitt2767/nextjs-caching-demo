@@ -15,7 +15,8 @@ export type SnippetId =
   | "country-component"
   | "private-all"
   | "private-component"
-  | "timing";
+  | "timing"
+  | "directives";
 
 export type Snippet = {
   /** Where the real code lives. */
@@ -26,6 +27,44 @@ export type Snippet = {
 };
 
 export const SNIPPETS: Record<SnippetId, Snippet> = {
+  directives: {
+    file: "src/lib/country-cache.ts · src/app/_components/private-cached.tsx",
+    point: "The same page, split three ways by where the answer is stored.",
+    code: `// 1. No request-time input -> computed at BUILD time, baked into the
+//    page, served from the edge. The cheapest thing here by far.
+async function getCatalog() {
+  'use cache'
+  cacheLife('hours')
+  return db.plans.findAll()
+}
+
+// 2. Needs the visitor's country -> runs at REQUEST time, so it needs a
+//    cache that outlives the instance. On serverless, plain 'use cache'
+//    would be a no-op here: entries live in one process's memory and the
+//    next request may land somewhere else.
+async function getOffer(code: CountryCode) {
+  'use cache: remote'
+  cacheLife('hours')
+  cacheTag(\`country-offer-\${code}\`)
+  return db.offers.find(code)
+}
+
+// 3. Reads the cookie itself. Only 'private' may do this, because the
+//    answer differs per visitor and must never reach a shared cache.
+//    Keep it small: cache the per-user STEP, not the whole feature.
+async function CountrySlot() {
+  'use cache: private'
+  cacheLife({ stale: 300 })
+
+  const code = (await cookies()).get('country')?.value ?? 'US'
+  return <OfferPanel code={code} />   // <- the costly half, shared (2)
+}
+
+// The rule: what is expensive should be shared, and what is personal
+// should be cheap. If the expensive thing is inside 'private', it runs
+// again for every visitor -- measured at ~2031ms vs ~105ms.`,
+  },
+
   timing: {
     file: "src/app/_components/arrival-timer.tsx",
     point: "An inline script, so each panel is stamped as its markup lands.",
@@ -117,7 +156,10 @@ export const SNIPPETS: Record<SnippetId, Snippet> = {
     point:
       "The country code is an argument, so it becomes part of the cache key.",
     code: `export async function getCachedCountryOffer(code: CountryCode) {
-  'use cache'
+  // 'remote', not plain 'use cache'. This runs behind <Suspense> at request
+  // time, and plain 'use cache' is an in-memory LRU inside the server process
+  // -- which on serverless is gone by the next request. See the note below.
+  'use cache: remote'
   cacheLife('hours')
   cacheTag(\`country-offer-\${code}\`)
 
@@ -133,7 +175,7 @@ const { offer } = await loadCachedCountryOffer(code)`,
     file: "src/app/_components/component-cached.tsx",
     point: "A hit skips the lookup AND the render — nothing runs again.",
     code: `async function CachedCountryPanel({ code }: { code: CountryCode }) {
-  'use cache'
+  'use cache: remote'      // shared across instances; see the note below
   cacheLife('hours')
   cacheTag(\`country-panel-\${code}\`)
 
@@ -180,20 +222,25 @@ export async function PrivateComponentCountrySlot() {
   // read sits OUTSIDE the cache and re-runs on every request.
   const { code } = await resolveCountry()
 
-  // ...and the expensive half is the SAME plain 'use cache' component
-  // group 2 renders -- server-side, shared by every user.
+  // ...and the expensive half is the SAME cached component group 2
+  // renders -- server-side, shared by every user.
   return <CachedCountryPanel code={code} />
 }
 
 async function CachedCountryPanel({ code }: { code: CountryCode }) {
-  'use cache'                                  // unchanged
+  'use cache: remote'                          // same component as group 2
   cacheLife('hours')
   cacheTag(\`country-panel-\${code}\`)
 
   const offer = await fetchCountryOffer(code)  // 2000ms
 }
 
-// private   -> per-user, browser-held, cheap  (the cookie read)
-// use cache -> shared, server-held, costly    (the lookup and render)`,
+// private -> per-user, browser-held, cheap  (the cookie read)
+// remote  -> shared, server-held, costly    (the lookup and render)
+
+// Worth knowing: the docs say remote cannot NEST inside private. Returning
+// the element (rather than awaiting it here) is not nesting -- React renders
+// it after the private scope has already returned. Verified: it builds and
+// runs.`,
   },
 };

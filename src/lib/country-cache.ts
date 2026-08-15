@@ -20,7 +20,12 @@ import {
 export async function getCachedCountryOffer(
   code: CountryCode,
 ): Promise<CountryOffer> {
-  "use cache";
+  // `remote`, not plain `use cache`. This runs behind <Suspense> at request
+  // time, and plain `use cache` is an in-memory LRU inside the server process.
+  // On a single long-lived `next start` that is a cache; on serverless it is
+  // not, because the instance holding the entry is gone by the next request.
+  // Verified on Vercel: six back-to-back requests produced six fresh renders.
+  "use cache: remote";
   cacheLife("hours");
   cacheTag(CACHE_TAGS.countryOffer(code));
 

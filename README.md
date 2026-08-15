@@ -337,6 +337,31 @@ On Vercel this shows up more often than it does locally: instances recycle, and
 each new one starts with a cold in-memory cache. `use cache: remote` is the
 durable option if you want entries to survive that.
 
+## Verifying the cache on a deployment (not just locally)
+
+**The local suite cannot prove the caching works in production.** `pnpm start`
+is one long-lived process, so plain `use cache` hits there and would not on
+serverless — which is why the request-time slots use `use cache: remote`. See
+§5.3 of `RESEARCH.md`.
+
+Check a deployment by hand. Each cached entry freezes a `rendered once at`
+timestamp, so a stable value across requests is a hit and a moving one is a
+miss:
+
+```bash
+URL=https://nextjs-caching-experiments.vercel.app/ppr
+for i in 1 2 3 4 5 6; do
+  curl -s "$URL" \
+    | grep -oE '"component-country-rendered-at"[^>]*>[^<]*' \
+    | grep -oE '20[0-9-]+T[0-9:.]+Z'
+done
+```
+
+Six identical lines is what you want. Six different ones means nothing is
+being cached. Note that `private-all-rendered-at` moves every time by design —
+`use cache: private` has no server-side cache — and that the first request
+after any deploy is always a miss, because the cache key includes the build ID.
+
 ## Two things worth knowing
 
 **The cache timestamp differs between the build and the first request.**

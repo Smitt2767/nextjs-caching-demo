@@ -59,10 +59,15 @@ export async function PrivateEverythingCountrySlot() {
  * since the answer differs per user.
  *
  * The expensive half stays exactly where it was. `CachedCountryPanel` is the
- * same plain `use cache` component group 2 renders, unchanged: the 2000ms
+ * same `use cache: remote` component group 2 renders, unchanged: the 2000ms
  * lookup and 400ms render are still cached on the server and shared across
  * every user. Only the cheap, per-user cookie read moved into the private
  * cache.
+ *
+ * On the nesting rule: the docs say a remote cache cannot be nested inside a
+ * private one. Returning the element is not nesting — it is not awaited here,
+ * so React renders it once this private scope has already returned. Verified
+ * to build and run.
  *
  * So the split is: private for what is per-user, shared `use cache` for what
  * is not. Nothing user-specific ends up in a server cache, and nothing

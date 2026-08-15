@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-CACHE-001 |
-| **Version** | 0.1 (draft — active research) |
-| **Status** | In progress — approximately 35–40% of scope explored |
+| **Version** | 0.2 (draft — active research) |
+| **Status** | In progress — approximately 40–45% of scope explored |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 14 August 2026 |
 | **Last updated** | 15 August 2026 |
@@ -31,18 +31,29 @@ while personal parts arrive moments later, and the expensive work behind them
 can be computed once and reused. In measurements, a panel that took ~2.4
 seconds without caching appeared in ~105ms with it.
 
-**The main finding is about placement, not the feature itself.** There are
-three cache types, and the instinctive way to use the per-user one is roughly
-20× slower than the correct way. The difference is one line moved up a level
-(§5). This is the kind of mistake that would ship silently and be blamed on
-"the framework being slow".
+**The headline finding is that local testing does not predict production
+behaviour.** Deploying the prototype unchanged to Vercel removed the entire
+benefit: every panel cached at request time reverted to its full ~2 seconds, on
+every request. The default cache lives in one server process's memory, which is
+a real cache on a local server and no cache at all on serverless. Nothing
+errors and nothing warns — the code, the tests and the local numbers all still
+look correct (§5.3). The fix is one directive, `use cache: remote`.
 
-**Three risks are worth flagging now** (§8): one failure mode produces no error
+**The second finding is about placement.** The instinctive way to use the
+per-user cache is roughly 20× slower than the correct way, and the difference
+is one line moved up a level (§5.5). Like the first, the slow version looks
+right.
+
+Both findings share a shape worth noting: **the failure modes here are silent.**
+Neither would be caught by a build, a type check, or a test suite.
+
+**Four risks are worth flagging now** (§8): two failure modes produce no error
 at all, one produces confusing errors in production but not locally, and the
 obvious way to measure any of this gives misleading numbers.
 
-**Recommendation:** continue. No blocking issue found. Validation on real
-infrastructure is the next milestone.
+**Recommendation:** continue. No blocking issue found, and the one serious
+surprise has a one-line remedy — but every future measurement must be taken on
+deployed infrastructure, not locally.
 
 ---
 
@@ -129,7 +140,7 @@ const header = (await headers()).get("x-vercel-ip-country");
 ### 5.2 There are three caches; they differ in where the answer is stored
 
 ```ts
-"use cache"           // this server's memory
+"use cache"           // this server process's memory
 "use cache: remote"   // a shared store, reachable by every server
 "use cache: private"  // the visitor's browser. Never stored on the server.
 ```
@@ -138,24 +149,106 @@ const header = (await headers()).get("x-vercel-ip-country");
 | --- | --- | --- | --- |
 | Shared between visitors | yes | yes | **no** — one per browser |
 | Survives a server restart | no | yes | no |
+| **Works at request time on serverless** | **no** — see §5.3 | **yes** | n/a |
 | May read cookies inside | **no** | **no** | **yes** |
 | Survives a page refresh | yes | yes | **no** |
+| Survives a deploy | no | no | n/a |
+
+The third row is the one that matters most and is the hardest to see: it is
+invisible on a local server, where every cache type appears to work. See §5.3.
 
 ---
 
-### 5.3 `use cache: remote` is not behaviourally distinct *(provisional)*
+### 5.3 **Critical finding.** On serverless, `use cache` does not cache request-time work at all
 
-**Observation.** We implemented a panel using `use cache: remote` and it was
-indistinguishable on screen from the plain version: same restrictions, same
-hit/miss behaviour, same timings. The difference is durability, which the
-interface cannot show. The panel was removed to avoid implying a distinction
-that does not exist.
+> **This supersedes the provisional 5.3 in v0.1**, which concluded from local
+> testing that `use cache: remote` was "not behaviourally distinct". That
+> conclusion was an artefact of the test environment. It was wrong.
 
-**Implication.** Choose `remote` for reliability (surviving restarts, shared
-across instances), not for observable behaviour.
+**Context.** All v0.1 measurements came from one local server started with
+`next start` — a single, long-lived process. The real project deploys to
+Vercel, which is serverless.
 
-**Caveat.** Tested on a single local server, where the durability advantage
-cannot appear. Re-examine under O6.
+**Observation.** After deploying the prototype unchanged, all five panels in
+groups 2 and 3 took the full ~2 seconds on **every** request. Six consecutive
+requests, reading the timestamp frozen into each cache entry:
+
+```
+req 1 -> 03:15:47.208Z
+req 2 -> 03:15:49.988Z
+req 3 -> 03:15:54.326Z     six requests
+req 4 -> 03:15:57.329Z     six different timestamps
+req 5 -> 03:16:00.315Z     zero cache hits
+req 6 -> 03:16:03.085Z
+```
+
+Meanwhile the group 1 panels held a single timestamp across all six, and the
+response carried `x-vercel-cache: HIT`. So the failure is precise: **the
+pre-built part of the page was fine; everything cached at request time was
+not.**
+
+**Cause.** `use cache` stores entries in an in-memory LRU *inside the server
+process*. The framework's own documentation states the consequence directly:
+
+| Environment | Runtime caching behaviour |
+| --- | --- |
+| **Serverless** | Entries typically don't persist across requests (each request can be a different instance). Build-time caching works normally. |
+| **Self-hosted** | Entries persist across requests. |
+
+A single `next start` process is the second row. Vercel is the first. The same
+code caches perfectly on one and not at all on the other.
+
+**Why group 1 was unaffected.** Those panels take no request-time input, so
+they are computed at build time and baked into the pre-rendered page, then
+served from the edge. Groups 2 and 3 read a cookie, which defers them to
+request time — into the ephemeral instance, where the cache is always cold.
+
+**Resolution.** `use cache: remote` for anything cached at request time. It
+stores entries in a shared store reachable by every instance; on Vercel the
+store is provided automatically with no configuration. Two directives changed
+in the prototype, covering three of the five panels.
+
+**What this does *not* fix.** The `private` panel (§5.5, shape A) is unchanged,
+because `private` has no server-side cache by design — it is per-browser. It
+took ~2 seconds on a fresh load locally too. That is correct behaviour, not a
+regression.
+
+**Cost.** A network round trip per lookup, plus platform storage fees. Entries
+still do not survive a deploy: the cache key includes the build ID, so the
+first request after every release pays full price.
+
+**Commercial significance.** This is the most important finding in the report.
+A team could validate caching locally, see every panel hit, ship, and silently
+lose the entire benefit in production — while the code, the tests and the
+local measurements all continue to look correct. Nothing errors. Nothing warns.
+
+---
+
+### 5.3a `remote` inside `private` is permitted when the element is returned, not awaited
+
+**Context.** The documentation states that a remote cache **cannot** be nested
+inside a private one, and shows it raising an error. §5.5 shape B places a
+cached panel inside a `private` wrapper, so making that panel `remote` appeared
+to be prohibited.
+
+**Observation.** It builds and runs. The distinction is that the wrapper
+*returns* the element rather than `await`ing it:
+
+```tsx
+export async function CountrySlot() {
+  "use cache: private";
+  const code = (await cookies()).get("country")?.value ?? "US";
+  return <CachedOfferPanel code={code} />;   // returned, not awaited
+}
+```
+
+React renders `CachedOfferPanel` after the private scope has already returned,
+so the remote cache never actually runs inside it. Awaiting it there would be
+genuine nesting and is expected to fail.
+
+**Status:** *provisional* — verified by build and runtime execution, not by
+reading the framework's implementation. Treat the boundary as fragile and
+re-test on upgrade.
 
 ---
 
@@ -221,11 +314,15 @@ export async function CountrySlot() {
 }
 
 async function CachedOfferPanel({ code }: { code: string }) {
-  "use cache";                                 // shared: everything expensive
+  "use cache: remote";                         // shared: everything expensive
   const offer = await slowLookup(code);        // 2 seconds, once per country
   return <Offer data={offer} />;
 }
 ```
+
+> Shape B used plain `"use cache"` here in v0.1, which is correct on a
+> long-lived server and useless on serverless. See §5.3, and §5.3a for why this
+> is permitted inside a `private` wrapper.
 
 **Measurement** — identical work, warm cache, same page:
 
@@ -315,6 +412,17 @@ become untrue.
   cleared by one test while another expects a hit produced failures for the
   wrong reason.
 
+**Known limitation, and the one that mattered.** All of the above runs against
+a **local** production build. That is a long-lived single process, and §5.3
+showed it reports cache hits that a serverless deployment does not — so a green
+suite proves the logic is right, not that the caching survives production.
+
+Production caching is therefore verified separately and manually, by requesting
+the deployed page repeatedly and comparing the timestamp frozen into each cache
+entry. A stable timestamp across requests is a hit; a moving one is a miss.
+This is the check that found §5.3, and it is the check to repeat after any
+change to a cache directive.
+
 ---
 
 ## 7. Measurement caveat
@@ -342,11 +450,27 @@ browser's Performance panel for anything real.
 
 | # | Risk | Severity | Detail |
 | --- | --- | --- | --- |
+| R6 | **Local testing overstates caching** | **High** | Confirmed in production — see below |
 | R1 | Silent no-op in `proxy.ts` | **High** | See below |
 | R2 | Confusing errors in production only | Medium | Cold-cache mismatch |
 | R3 | Misleading measurements | Medium | §7 |
 | R4 | Two delivery paths behave differently | Medium | Fresh load vs link click |
 | R5 | Unstable values break the build | Low | Loud and easy to fix |
+
+**R6 — caching that works locally may do nothing in production.** Promoted to
+the top of this table because it is the only risk we have now *observed*
+occurring rather than anticipated. Plain `use cache` caches request-time work on
+a long-lived server and not on serverless (§5.3). The symptom is a total loss of
+caching with no error, no warning and no test failure.
+
+*Mitigation:* use `use cache: remote` for anything evaluated at request time —
+in practice, anything behind a `<Suspense>` boundary that reads a cookie,
+header or search parameter. Reserve plain `use cache` for content with no
+request-time input, which is pre-built and unaffected.
+
+*Process mitigation, and the more important one:* **treat local cache
+measurements as unverified.** Any performance claim about caching must be
+reproduced against a deployment before it is believed.
 
 **R1 — `use cache` does not work in `proxy.ts`** (Proxy is Next 16's renamed
 middleware: code running before a request reaches the app). Tested directly:
@@ -392,8 +516,9 @@ Ordered by importance to the decision.
 
 | # | Question | Why it matters |
 | --- | --- | --- |
-| Q1 | How does this behave on real infrastructure with instance recycling? | All figures come from one local server. R2 is expected to be more visible. |
-| Q2 | Is `use cache: remote` worth its network round trip for our data? | Determines whether we accept the added cost and dependency. |
+| ~~Q1~~ | ~~How does this behave on real infrastructure?~~ | **Answered — see §5.3.** Plain `use cache` did nothing at request time. Closed, and it changed the design. |
+| Q7 | Does `use cache: remote` restore the measured figures on Vercel? | Follow-on from Q1. The fix is deployed but the improvement is not yet quantified in production. |
+| Q2 | Is `use cache: remote` worth its network round trip for our data? | Now unavoidable rather than optional (§5.3), so this becomes a cost question, not a choice. |
 | Q3 | How do we clear cached content when the source changes (webhook, admin edit)? | Only manual clearing has been exercised. |
 | Q4 | How does this hold up with real authentication, where nearly everything is per-visitor? | §5.5 becomes the dominant design question. |
 | Q5 | What happens on pages whose URL is inherently per-visitor (`/orders/[id]`)? | Little may be shareable; the approach may not apply. |
@@ -404,18 +529,31 @@ Ordered by importance to the decision.
 ## 10. Recommendation
 
 **Continue.** The mechanism does what we need and no blocking issue has been
-found. Two conditions:
+found. Three conditions:
 
-1. Treat §5.5 as a design rule for the real project, not a detail. It is the
+1. **Adopt §5.3 as a rule: anything cached at request time uses
+   `use cache: remote`.** Plain `use cache` is for content with no request-time
+   input. Getting this wrong costs the entire benefit and produces no error.
+2. Treat §5.5 as a design rule for the real project, not a detail. It is the
    difference between fast and slow, and the wrong version looks correct.
-2. Prioritise Q1 (real infrastructure). Every figure here comes from one
-   machine, and the riskiest behaviour (R2) is the one local testing hides.
+3. **Measure on a deployment, never locally.** Q1 is closed, and the answer was
+   that our local figures were unrepresentative. This applies to every
+   performance claim we make from here, including the ones already in this
+   report (§7).
+
+The pattern across §5.3 and §5.5 is that both wrong answers are the intuitive
+ones and both fail silently. Whatever we build in the real project should make
+these two choices explicit at review time rather than leaving them to judgement.
 
 ---
 
 ## 11. References
 
 - Next.js documentation, version 16.3.1, as shipped in `node_modules/next/dist/docs`
+  — in particular `directives/use-cache.md` §"Runtime caching considerations"
+  and `directives/use-cache-remote.md`, which state the §5.3 behaviour directly
+- Deployment under test: <https://nextjs-caching-experiments.vercel.app/ppr>
+  (Vercel, serverless)
 - Prototype repository: `nextjs-caching-demo`, branch
   `enable-cache-components-instant-nav`
 - `README.md` in the same repository — how to run the prototype and reproduce
@@ -427,4 +565,5 @@ found. Two conditions:
 
 | Version | Date | Author | Changes |
 | --- | --- | --- | --- |
+| 0.2 | 15 Aug 2026 | Smit Vekariya | First deployment to Vercel. **§5.3 rewritten and its v0.1 conclusion withdrawn**: plain `use cache` does not cache request-time work on serverless. Added §5.3a (`remote` inside `private`). Added risk R6 (highest). Closed Q1, opened Q7. Updated §5.2, §5.5, executive summary and recommendation. Prototype changed to `use cache: remote` in two places. |
 | 0.1 | 15 Aug 2026 | Smit Vekariya | Initial report. Findings 5.1–5.7, risks R1–R5, open questions Q1–Q6. Scope ~35–40% explored. |

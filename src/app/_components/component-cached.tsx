@@ -84,7 +84,9 @@ export async function CachedCountryPanel({
    */
   slot?: "component-country" | "private-component";
 }) {
-  "use cache";
+  // See `getCachedCountryOffer`: request-time work needs a cache that outlives
+  // the instance, so this is `remote` rather than plain `use cache`.
+  "use cache: remote";
   cacheLife("hours");
   cacheTag(CACHE_TAGS.countryPanel(code));
 

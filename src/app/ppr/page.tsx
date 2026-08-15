@@ -239,10 +239,22 @@ export default function PprDemo() {
               <>
                 <p>
                   The country code is passed as an <em>argument</em> into a{" "}
-                  <code className="font-mono">&quot;use cache&quot;</code>{" "}
+                  <code className="font-mono">
+                    &quot;use cache: remote&quot;
+                  </code>{" "}
                   function, so it becomes part of the cache key: one entry per
                   country. The cookie is read outside that scope, because cached
                   scopes cannot read cookies.
+                </p>
+                <p>
+                  <strong>Why remote.</strong> This runs at request time, and
+                  plain <code className="font-mono">use cache</code> keeps
+                  entries in memory <em>inside one server process</em>. That is
+                  a real cache under <code className="font-mono">next start</code>{" "}
+                  and no cache at all on serverless, where the next request may
+                  land on a different instance. Measured on Vercel with plain{" "}
+                  <code className="font-mono">use cache</code>: six consecutive
+                  requests, six fresh renders.
                 </p>
                 <p>
                   On a hit the lookup reports 0ms — but the 400ms render is
@@ -286,6 +298,11 @@ export default function PprDemo() {
                   <em>together with the shell</em> — it never streams at all.
                   Arrive here by clicking the link from the index and it is
                   already present.
+                </p>
+                <p>
+                  Also <code className="font-mono">remote</code>, for the reason
+                  given on the amber card: an in-memory entry does not outlive
+                  the serverless instance that created it.
                 </p>
               </>
             }
@@ -367,10 +384,17 @@ export default function PprDemo() {
                 <p>
                   Only the <em>wrapper</em> is private. Inside it sits{" "}
                   <code className="font-mono">CachedCountryPanel</code> — the
-                  same plain <code className="font-mono">use cache</code>{" "}
+                  same <code className="font-mono">use cache: remote</code>{" "}
                   component the violet slot renders, unchanged. The 2000ms
                   lookup and 400ms render are still cached on the server and
                   shared by every user.
+                </p>
+                <p>
+                  The docs say a remote cache cannot be{" "}
+                  <em>nested inside</em> a private one. This is not nesting: the
+                  wrapper <em>returns</em> the element rather than awaiting it,
+                  so React renders it after the private scope has already
+                  returned. It builds and runs — verified.
                 </p>
                 <p>
                   What the private scope adds is the ability to read{" "}
@@ -381,8 +405,8 @@ export default function PprDemo() {
                 </p>
                 <p>
                   So the split follows the data: private for the per-user bit
-                  (cheap, browser-held, never on the server), plain{" "}
-                  <code className="font-mono">use cache</code> for the expensive
+                  (cheap, browser-held, never on the server),{" "}
+                  <code className="font-mono">remote</code> for the expensive
                   bit that everyone shares. A client navigation reuses the whole
                   thing with <strong>no loading state</strong>; a full reload
                   clears browser memory and re-runs the wrapper — though the
