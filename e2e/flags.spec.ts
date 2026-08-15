@@ -126,6 +126,51 @@ test.describe("flags: attributes", () => {
   });
 });
 
+test.describe("flags: targeting", () => {
+  /**
+   * Asserts the wiring, not the rule.
+   *
+   * `pricing-badge`'s ON/OFF depends on a rule that lives in GrowthBook, and
+   * pinning the suite to it would mean a test that fails whenever somebody
+   * edits a flag — which is the opposite of what a flag is for. What must hold
+   * regardless is that the visitor's country reaches the evaluation.
+   */
+  for (const [persona, country] of [
+    ["anxiety-mobile-in", "IN"],
+    ["corporate-desktop-us", "US"],
+    ["belonging-desktop-uk", "UK"],
+  ] as const) {
+    test(`the ${country} persona's country reaches the evaluation`, async ({
+      page,
+    }) => {
+      await page.goto("/flags");
+      await ready(page);
+      await page.getByTestId("persona-select").selectOption(persona);
+      await expect(attr(page, "country")).toHaveText(country);
+
+      const reason = page
+        .getByTestId("targeting-section")
+        .getByTestId("pricing-badge-reason");
+      await expect(reason).toContainText(`country=${country}`);
+    });
+  }
+
+  test("the targeted flag streams, the untargeted one does not", async ({
+    page,
+  }) => {
+    await page.goto("/flags");
+
+    // The kill switch has no targeting, so it is in the document the server
+    // sent — before any boundary resolves.
+    await expect(page.getByTestId("kill-switch-value")).toBeVisible();
+
+    // The targeted one reads `country`, so it cannot be prerendered.
+    await expect(
+      page.getByTestId("targeting-section").getByTestId("pricing-badge-value"),
+    ).toBeVisible();
+  });
+});
+
 test.describe("flags: device classification", () => {
   // `userAgent()` (ua-parser, bundled into Next) gives the type; Client Hints
   // give the capability. Neither alone is enough for the four buckets.

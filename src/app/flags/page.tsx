@@ -6,6 +6,10 @@ import {
   AttributesSkeleton,
 } from "@/app/_components/attributes-panel";
 import { PersonaSwitcher } from "@/app/_components/persona-switcher";
+import {
+  TargetedFlagPanel,
+  TargetedFlagSkeleton,
+} from "@/app/_components/targeted-flag-panel";
 import { getFlag } from "@/lib/flags/evaluate";
 import { AUDIENCES } from "@/lib/personas";
 
@@ -173,6 +177,45 @@ export default function FlagsPage() {
           tested for it. GrowthBook&apos;s free plan allows one SDK webhook per
           organisation and Vercel&apos;s Edge Config sync already holds it, so
           here the button is the mechanism.
+        </p>
+      </section>
+
+      <section
+        className="mt-9 max-w-4xl"
+        aria-labelledby="targeting-heading"
+        data-testid="targeting-section"
+      >
+        <div className="max-w-3xl">
+          <p
+            id="targeting-heading"
+            className="font-mono text-[12px] font-medium uppercase tracking-wider text-ink-subtle"
+          >
+            Step 5 · targeting
+          </p>
+          <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
+            The first flag that asks who you are
+          </h2>
+          <p className="mt-1 text-[14px] leading-relaxed text-ink-muted">
+            <code className="font-mono">pricing-badge</code> is forced on for
+            India and the UK and off everywhere else. Because it reads{" "}
+            <code className="font-mono">country</code>, it cannot be
+            prerendered — so unlike the kill switch above, this one streams.
+          </p>
+        </div>
+
+        <div className="mt-4 border border-line bg-surface-raised p-4">
+          <Suspense fallback={<TargetedFlagSkeleton />}>
+            <TargetedFlagPanel />
+          </Suspense>
+        </div>
+
+        <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+          The important part is what did <em>not</em> become request-time. The
+          ruleset behind this evaluation is the same cached entry the kill switch
+          used — read once at build. Only the attributes are per-request, and
+          matching them against the rules is a walk over some JSON. Personalising
+          a flag costs a rule walk, not a round trip, which is why a page full of
+          targeted flags can still be mostly static.
         </p>
       </section>
     </main>
