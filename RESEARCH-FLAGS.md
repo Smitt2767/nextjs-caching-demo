@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.7 (design study; steps 1–8 built) |
-| **Status** | In progress. Measurements M1–M10 recorded in §13.1. |
+| **Version** | 0.8 (design study; steps 1–9 built) |
+| **Status** | In progress. Measurements M1–M11 recorded in §13.1. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -627,6 +627,10 @@ event** ("user 123 saw variant B") with a later conversion. If exposures are
 wrong, the experiment does not fail loudly — it produces a confident, precise,
 wrong answer.
 
+**Measured since this section was written** (§13.1 M11): 3 exposures against 50
+visitors, and 3 against 100 on a second run — where the broken path stops firing
+entirely because every entry is warm.
+
 **The failure.** Put GrowthBook's `trackingCallback` inside a cached scope and it
 runs on the cache miss. Every subsequent hit skips the whole function body,
 tracking call included. Fifty thousand visitors see variant B; three exposures are
@@ -755,35 +759,34 @@ so a section per tier would have meant three copies of the same page:
 Tier 2 (`app/[code]/`, proxy rewrite) is step 12 and not yet built. Tier 3 is
 out of scope — §6.3 explains why it is the wrong answer for anything measured.
 
-### 11.3 Build the exposure counter next
+### 11.3 The exposure counter · built (M11)
 
 Two otherwise identical slots, one with tracking inside the cached scope and one
 with it outside, each displaying a live exposure count against the request count.
 
-Expected: **3 exposures / 50 requests** against **50 exposures / 50 requests**.
+Measured: **3 exposures / 50 visitors** against **50 / 50** — and on a second
+run without resetting, **3 / 100** against **100 / 100**.
 
 This is the single artefact most likely to change how the team writes this code,
 for the same reason the ~2031ms vs ~105ms comparison in the companion report
-worked: the number is unarguable and the wrong version looks correct. It is also
-the last correctness question in this document still unanswered — everything in
-§13.1 is about cost or placement, and F1 is the only risk that costs you the
-ability to know whether a decision was right.
+worked: the number is unarguable and the wrong version looks correct. F1 remains
+the only risk in §12 that costs you the ability to know whether a decision was
+right, but it is now a demonstrated one rather than a predicted one.
 
 ### 11.4 Sequencing
 
-Steps 1–8 are built; the rendered variant is cached by variant (M10). What
-remains, in order:
+Steps 1–9 are built. The rendered variant is cached by variant (M10) and the
+exposure boundary is demonstrated rather than asserted (M11). What remains, in
+order:
 
-1. **Exposure counter** (§11.3) — the correctness boundary, and the reason F1
-   sits at the top of §12.
-2. **Verification pass on deployed infrastructure** (§13.2). **Not locally.**
+1. **Verification pass on deployed infrastructure** (§13.2). **Not locally.**
    Several numbers in §13.1 are local and are known to mislead: M7's read counts,
    since Edge Config is replicated to the runtime on Vercel and far cheaper there
    than the local figures suggest — and M10's frozen timestamps, which would look
    identical under plain `use cache`, a directive that caches nothing at all on
    serverless.
-3. **Per-visitor entitlement flag** in `use cache: private`.
-4. **Precompute** (Tier 2) — the only genuinely new structure, and the only one
+2. **Per-visitor entitlement flag** in `use cache: private`.
+3. **Precompute** (Tier 2) — the only genuinely new structure, and the only one
    that can fail outright. `FLAGS_SECRET` is required: `generatePermutations`
    throws at build time without it.
 
@@ -793,7 +796,7 @@ remains, in order:
 
 | ID | Risk | Severity | Detectable by | Mitigation |
 | --- | --- | --- | --- | --- |
-| **F1** | Exposure event inside a cached scope; experiment data silently invalid | **High** | Nothing automated. Only an exposure-vs-request count | §9 rules; the §11.3 counter as a permanent regression check |
+| **F1** | Exposure event inside a cached scope; experiment data silently invalid | **High** | Nothing automated. Only an exposure-vs-visitor count — measured at 3/50, then 3/100 (§13.1 M11) | §9 rules; the §11.3 counter, now an e2e test, as a permanent regression check |
 | **F2** | Ruleset fetched per request because a provider SDK's own cache is trusted | High | Deployed measurement only | `use cache` around the fetch, and never the provider adapter's internal cache — measured at 1 read per request (§13.1 M7) |
 | **F3** | Permutation explosion from one global flag group | Medium | Build time and output size | Per-page-tree groups; declare `options` on every flag (§7.1) |
 | **F4** | `new Date()` for daypart frozen into the static shell at build | Medium | Visual, and only after hours | Compute daypart in proxy; `await io()` if it must be in-page |
@@ -1211,6 +1214,57 @@ same family as F1, and the reason F12 exists.
 directive here is `use cache: remote` for that reason, but the table above does
 not prove it — only the deployment can.
 
+**M11. Exposure tracking inside a cached scope fires once per entry.**
+**[measured]** · *§13.2 claim 1, and the one this document called blocking*
+
+Two paths, identical in every respect but one: the same variant, the same
+`use cache: remote`, the same `cacheLife`, the same 600ms render, the same
+markup. The only difference is which side of the cache boundary the tracking
+call sits on. Fifty simulated visitors, hashed by the real ruleset:
+
+```
+run 1    inside:   3 / 50 visitors      outside:  50 / 50 visitors
+run 2    inside:   3 / 100 visitors     outside: 100 / 100 visitors
+```
+
+Three exposures against fifty. §9 predicted this as a rule; it is now a number.
+
+**The second run is the worse half of the finding.** Without a reset the
+entries are warm, so the broken path does not merely under-report — it records
+**nothing at all**. Traffic doubles, the exposure count does not move, and the
+page continues to render correctly throughout. An experiment left running for a
+week produces one exposure per variant and a full week of conversions to attach
+to them.
+
+**Nothing detects it.** Not the build, not TypeScript, not a test, and — the
+part worth dwelling on — not any timing measurement, because the cache is
+working perfectly. That is what separates this from M1 and RND-NEXT-CACHE-001
+§5.3: those cost latency, which shows up in a graph. This costs the experiment,
+and the graph looks healthier than ever, since a cached render is fast.
+
+**The rule, restated as code.** The boundary between "runs every request" and
+"runs once per variant" is exactly the boundary between what must be tracked
+and what may be cached — one line, drawn once:
+
+```ts
+export async function serveVisitor(visitorId: string) {
+  const variant = await evaluateRaw("hero-copy", { id: visitorId }, "control");
+  record("outside");            // uncached wrapper: once per visitor ✓
+  await renderTrackingOutside(variant);  // cached: once per variant ✓
+}
+```
+
+**Caveat on the counters.** Module-level, so exact on one `next start` and
+instance-local on serverless, where both sides undercount. The ratio survives;
+the absolute numbers do not. A real system sends these to an analytics pipeline
+instead — which is exactly why the bug is invisible in production: the pipeline
+receives well-formed events, just far too few of them.
+
+**Sequential by design.** Fired in parallel, several visitors reach the same
+cold entry before the first fills it and the broken path records a few extra
+exposures. That stampede is real and worth knowing about, but it flatters the
+broken path; one at a time gives the floor.
+
 ### 13.2 Claims still to verify
 
 The following must be measured on the deployed application, using the
@@ -1218,7 +1272,7 @@ six-request curl loop already documented in `README.md`.
 
 | # | Claim | Source | How to test |
 | --- | --- | --- | --- |
-| 1 | Tracking inside a cached scope fires once per entry, not per request | inferred | §11.3 counter, 50 requests across 3 variants |
+| 1 | Tracking inside a cached scope fires once per entry, not per request | **answered — M11** | Measured 3/50, and 3/100 on a second run. Still worth repeating on the deployment, where the counters are instance-local |
 | 2 | The `fetch` Data Cache still functions under `cacheComponents: true` | docs, ambiguous | Tag a payload fetch, measure hit rate on the deployment |
 | 3 | The `fetch` Data Cache survives a deploy | docs | Measure across two consecutive deploys |
 | 4 | `use cache: remote` does **not** survive a deploy | docs | Same test, opposite expectation |
@@ -1229,7 +1283,8 @@ six-request curl loop already documented in `README.md`.
 | 9 | Edge Config vs `use cache: remote` vs GrowthBook CDN read latency | vendor | Three-way timing on the deployment |
 | 10 | Payload cache behaviour on cold start after a deploy (stampede risk) | inferred | Deploy, then fire concurrent requests immediately |
 
-Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
+Claim 1 is answered (M11). Claim 2 is the remaining blocker; the rest can
+proceed in parallel with the build.
 
 ---
 
@@ -1285,5 +1340,6 @@ Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
 | 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |
 | 0.4 | 15 Aug 2026 | Step 6 built; Flags SDK integrated alongside the existing path. M6 (an SDK flag cannot be in the shell) and M7 (the stock adapter reads the ruleset once per request) added. |
 | 0.5 | 15 Aug 2026 | Step 7: every flag moved onto the SDK, including the prerendered one. M8 (a reused `Request` memoises for the process lifetime) and M9 (the stock adapter cannot be prerendered at all) added. |
+| 0.8 | 15 Aug 2026 | Step 9 built: the exposure counter. M11 added — 3 exposures against 50 visitors, and 3 against 100 on a second run — answering §13.2 claim 1, the one this document called blocking. |
 | 0.7 | 15 Aug 2026 | Step 8 built: the rendered variant cached by variant. M10 added — 12 requests across 3 variants produced 3 renders — with risk F12 for the prop-shaped leak that would undo it. |
 | 0.6 | 15 Aug 2026 | Rewritten rather than amended. §1 and §11 restated from the current position instead of carrying three rounds of "superseded by" notes; §11.2 replaced with the route structure actually built; risk F11 added from M8. |

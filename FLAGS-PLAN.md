@@ -12,7 +12,7 @@ shaped this way. You don't need it to follow along.
 
 ## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6, 7, 8.** Step 4 landed as a button rather than a
+**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9.** Step 4 landed as a button rather than a
 webhook — the free plan has no webhook slot to spare. Findings are in
 `RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
 reading first.
@@ -27,7 +27,7 @@ reading first.
 | 6 | First experiment: 3 variants | **yes** — small | ✅ |
 | 7 | Move every flag onto the Flags SDK | no | ✅ |
 | 8 | Cache the variant | no | ✅ |
-| 9 | The exposure counter | no |  |
+| 9 | The exposure counter | no | ✅ |
 | 10 | Deploy and measure on Vercel | no |  |
 | 11 | Per-user entitlement flag | **yes** — small |  |
 | 12 | Precompute (build-time variants) | no |  |
@@ -550,7 +550,7 @@ plausible and the page looks perfect. Pass decisions in, never identities.
 
 ---
 
-## Step 9 — The exposure counter
+## Step 9 — The exposure counter ✅
 
 **Goal.** Show what happens when the experiment's tracking call ends up inside
 the cache.
@@ -566,16 +566,40 @@ not the build, not TypeScript, not tests.
 
 **Code:**
 
-- `src/app/flags/probe/route.ts` — evaluates one simulated visitor
-- `src/app/_components/exposure-probe.tsx` — a button that runs 50 of them and
-  counts how many times each side actually executed
+- `src/lib/flags/exposure.ts` — the two paths and the counters
+- `src/app/flags/actions.ts` — Server Actions to run and reset the probe
+- `src/app/_components/exposure-probe.tsx` — the button and the two counters
 
 **Test:**
 
-- [ ] Click "run 50 visitors"
-- [ ] Left panel (tracking inside the cache) shows roughly **3 / 50**
-- [ ] Right panel (tracking outside) shows exactly **50 / 50**
-- [ ] Variant split is roughly even
+- [x] Click "run 50 visitors"
+- [x] Left panel (tracking inside the cache) shows roughly **3 / 50**
+- [x] Right panel (tracking outside) shows exactly **50 / 50**
+- [x] Variant split is roughly even
+
+Measured:
+
+```
+run 1    inside:   3 / 50 visitors      outside:  50 / 50 visitors
+run 2    inside:   3 / 100 visitors     outside: 100 / 100 visitors
+```
+
+**Run it twice — that is the real lesson.** Without a reset the entries are
+warm, so the broken path does not merely under-report, it records **nothing at
+all**. Traffic doubles, the exposure count does not move, and the page renders
+correctly throughout. A week of that gives you one exposure per variant and a
+week of conversions to attach to them.
+
+**The rule is one line.** The boundary between "runs every request" and "runs
+once per variant" is exactly the boundary between what must be tracked and what
+may be cached. Evaluate and track in the uncached wrapper; render inside the
+cache. With the Flags SDK that is `setTrackingCallback` with `after()`.
+
+**Two honest limits of this demo.** The counters are module-level, so they are
+exact on one `next start` and instance-local on serverless — the ratio survives,
+the absolute numbers do not. And the visitors are fired sequentially: in
+parallel, several reach the same cold entry before the first fills it and the
+broken path records a few extra, which flatters it.
 
 **Done when:** you can see 3 against 50 side by side.
 

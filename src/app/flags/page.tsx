@@ -13,6 +13,7 @@ import {
   HeroExperimentPanel,
   HeroExperimentSkeleton,
 } from "@/app/_components/hero-experiment-panel";
+import { ExposureProbe } from "@/app/_components/exposure-probe";
 import { FlagCard } from "@/app/_components/flag-card";
 import { PersonaSwitcher } from "@/app/_components/persona-switcher";
 import {
@@ -307,6 +308,58 @@ export default function FlagsPage() {
             <Suspense fallback={<CachedHeroSkeleton />}>
               <CachedHeroPanel />
             </Suspense>
+          </div>
+        </FlagCard>
+        {/* Full width: two counters side by side is the entire argument, and
+            at half width they stack and stop being a comparison. */}
+        <FlagCard
+          className="md:col-span-2"
+          testId="exposure-section"
+          step="Step 9 · the exposure counter"
+          title="The bug that costs you the experiment, not the latency"
+          summary="Two identical paths. The only difference is which side of the cache boundary the tracking call sits on."
+          description={
+            <>
+              <p>
+                An A/B test is not the variant rendering. It is an{" "}
+                <strong className="text-ink">exposure event</strong> —
+                &ldquo;visitor 123 saw variant B&rdquo; — paired with a later
+                conversion. Put that call inside a cached scope and it runs on
+                the miss; every hit skips the whole function body, tracking
+                included.
+              </p>
+              <p>
+                Fifty thousand visitors, three exposures — one per cache entry.
+                Conversions still attach to all fifty thousand, so the measured
+                lift is meaningless and every dashboard looks healthy. Nothing
+                catches it: not the build, not TypeScript, not a test, and not
+                any timing measurement, because the damage is to the data rather
+                than the latency.
+              </p>
+              <p>
+                <strong className="text-ink">The rule is one line.</strong> The
+                boundary between &ldquo;runs every request&rdquo; and
+                &ldquo;runs once per variant&rdquo; is exactly the boundary
+                between what must be tracked and what may be cached. Evaluate
+                and track in the uncached wrapper; render inside the cache. With
+                the Flags SDK that means{" "}
+                <code className="font-mono">setTrackingCallback</code> with{" "}
+                <code className="font-mono">after()</code>, which defers the call
+                until after the response is sent, per request.
+              </p>
+              <p>
+                The counters are module-level, which counts exactly on one{" "}
+                <code className="font-mono">next start</code> and undercounts on
+                serverless, where each instance keeps its own tally. The ratio
+                survives either way. A real system sends these to an analytics
+                pipeline — which is precisely why the bug is invisible: the
+                pipeline receives well-formed events, just far too few of them.
+              </p>
+            </>
+          }
+        >
+          <div className="border border-line bg-surface p-4">
+            <ExposureProbe />
           </div>
         </FlagCard>
       </div>

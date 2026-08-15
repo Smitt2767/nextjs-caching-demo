@@ -250,6 +250,75 @@ test.describe("flags: the experiment", () => {
   });
 });
 
+test.describe("flags: the exposure counter", () => {
+  /**
+   * The counters are module state on one server, shared by every test here, so
+   * each starts by clearing them *and* the cached renders. Resetting only the
+   * counters would leave the entries warm and the broken path would record
+   * zero rather than one per variant — which overstates the bug instead of
+   * demonstrating it.
+   */
+  async function reset(page: Page) {
+    await page.goto("/flags");
+    await page.getByTestId("exposure-reset").click();
+    await expect(page.getByTestId("exposure-outside")).toContainText("0 / 0");
+  }
+
+  const count = async (page: Page, side: "inside" | "outside") => {
+    const text = await page.getByTestId(`exposure-${side}`).innerText();
+    return Number(text.split("/")[0].trim());
+  };
+
+  test("tracking inside the cache counts entries, not visitors", async ({
+    page,
+  }) => {
+    await reset(page);
+    await page.getByTestId("exposure-run").click();
+    await expect(page.getByTestId("exposure-outside")).toContainText(
+      "50 / 50",
+      { timeout: 60_000 },
+    );
+
+    // The correct path fires once per visitor, whatever the cache does.
+    expect(await count(page, "outside")).toBe(50);
+
+    /**
+     * The broken one fires once per cache entry. Asserted as "far fewer than
+     * the visitors" rather than as exactly 3: the entry count is the number of
+     * variants those 50 ids actually hashed into, and the split lives in
+     * GrowthBook. Any number near 50 would mean the trap had stopped working.
+     */
+    const inside = await count(page, "inside");
+    expect(inside).toBeGreaterThan(0);
+    expect(inside).toBeLessThanOrEqual(5);
+  });
+
+  test("a second run records nothing at all on the broken path", async ({
+    page,
+  }) => {
+    await reset(page);
+
+    await page.getByTestId("exposure-run").click();
+    await expect(page.getByTestId("exposure-outside")).toContainText(
+      "50 / 50",
+      { timeout: 60_000 },
+    );
+    const firstInside = await count(page, "inside");
+
+    // Every entry is warm now, so the tracking call is not merely under-firing
+    // — it does not execute at all. This is what months of a quietly invalid
+    // experiment looks like.
+    await page.getByTestId("exposure-run").click();
+    await expect(page.getByTestId("exposure-outside")).toContainText(
+      "100 / 100",
+      { timeout: 60_000 },
+    );
+
+    expect(await count(page, "inside")).toBe(firstInside);
+    expect(await count(page, "outside")).toBe(100);
+  });
+});
+
 test.describe("flags: caching the variant", () => {
   const cached = (page: Page, id: string) =>
     page.getByTestId("cached-hero-section").getByTestId(id);
