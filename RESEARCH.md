@@ -208,6 +208,24 @@ stores entries in a shared store reachable by every instance; on Vercel the
 store is provided automatically with no configuration. Two directives changed
 in the prototype, covering three of the five panels.
 
+**Confirmed after redeploying.** The same six-request check, on the same
+deployment, with `remote` in place:
+
+```
+             component-cached panel   private wrapper panel   private (all-in-one)
+req 1        03:35:35.538Z            03:35:35.535Z           03:35:35.469Z
+req 2        03:35:35.538Z            03:35:35.535Z           03:35:38.637Z
+req 3        03:35:35.538Z            03:35:35.535Z           03:35:41.384Z
+req 4        03:35:35.538Z  frozen    03:35:35.535Z  frozen   03:35:44.989Z  moves
+req 5        03:35:35.538Z            03:35:35.535Z           03:35:48.373Z
+req 6        03:35:35.538Z            03:35:35.535Z           03:35:51.613Z
+```
+
+Computed once, reused by every subsequent request across instances. The third
+column moving is the expected result, not a residual fault: `private` holds
+nothing on the server, so a request carrying no browser state recomputes it
+every time. This is the same behaviour it showed locally.
+
 **What this does *not* fix.** The `private` panel (§5.5, shape A) is unchanged,
 because `private` has no server-side cache by design — it is per-browser. It
 took ~2 seconds on a fresh load locally too. That is correct behaviour, not a
@@ -517,7 +535,8 @@ Ordered by importance to the decision.
 | # | Question | Why it matters |
 | --- | --- | --- |
 | ~~Q1~~ | ~~How does this behave on real infrastructure?~~ | **Answered — see §5.3.** Plain `use cache` did nothing at request time. Closed, and it changed the design. |
-| Q7 | Does `use cache: remote` restore the measured figures on Vercel? | Follow-on from Q1. The fix is deployed but the improvement is not yet quantified in production. |
+| ~~Q7~~ | ~~Does `use cache: remote` restore caching on Vercel?~~ | **Answered — see §5.3.** Yes: entries held across all six requests after redeploying. |
+| Q8 | What does `remote` cost us in latency and platform fees at real traffic? | It is now mandatory for request-time work (§5.3), so the cost is no longer optional and needs a figure. |
 | Q2 | Is `use cache: remote` worth its network round trip for our data? | Now unavoidable rather than optional (§5.3), so this becomes a cost question, not a choice. |
 | Q3 | How do we clear cached content when the source changes (webhook, admin edit)? | Only manual clearing has been exercised. |
 | Q4 | How does this hold up with real authentication, where nearly everything is per-visitor? | §5.5 becomes the dominant design question. |
@@ -565,5 +584,5 @@ these two choices explicit at review time rather than leaving them to judgement.
 
 | Version | Date | Author | Changes |
 | --- | --- | --- | --- |
-| 0.2 | 15 Aug 2026 | Smit Vekariya | First deployment to Vercel. **§5.3 rewritten and its v0.1 conclusion withdrawn**: plain `use cache` does not cache request-time work on serverless. Added §5.3a (`remote` inside `private`). Added risk R6 (highest). Closed Q1, opened Q7. Updated §5.2, §5.5, executive summary and recommendation. Prototype changed to `use cache: remote` in two places. |
+| 0.2 | 15 Aug 2026 | Smit Vekariya | First deployment to Vercel. **§5.3 rewritten and its v0.1 conclusion withdrawn**: plain `use cache` does not cache request-time work on serverless. Fix verified in production. Added §5.3a (`remote` inside `private`). Added risk R6 (highest). Closed Q1 and Q7, opened Q8. Updated §5.2, §5.5, §6, executive summary and recommendation. Prototype changed to `use cache: remote` in two places. |
 | 0.1 | 15 Aug 2026 | Smit Vekariya | Initial report. Findings 5.1–5.7, risks R1–R5, open questions Q1–Q6. Scope ~35–40% explored. |
