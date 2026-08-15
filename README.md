@@ -1,7 +1,26 @@
 # Cache Components demo
 
-A single page that shows, visually, what Next.js prerenders into the static
-shell versus what it streams in at request time.
+A measurement rig for Next.js 16 Cache Components, built one finding at a time.
+Four routes:
+
+| Route | What it is |
+| --- | --- |
+| `/ppr` | The original demo — what Next prerenders into the static shell versus what it streams at request time, colour-coded. Most of this README is about this page. |
+| `/cache-api` | Reference cards for `use cache`, `cacheLife`, `cacheTag`, and the three ways to invalidate. |
+| `/flags` | Feature flags and A/B experiments under Cache Components, via GrowthBook and Vercel's Flags SDK. Built step by step — see [FLAGS-PLAN.md](./FLAGS-PLAN.md); the findings are in [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). |
+| `/invalidate` | Buttons that expire specific cache tags, so you can watch the effect on the other pages. |
+
+Two companion reports carry the measurements rather than the intentions:
+[RESEARCH.md](./RESEARCH.md) for caching, [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md)
+for flags. Both tag every claim with where it came from — **[docs]**,
+**[vendor]**, **[inferred]** or **[measured]** — because the central lesson of
+the first one was that this stack's documentation can be correct and still
+mislead, since the failure was invisible locally.
+
+## `/ppr` — the original demo
+
+What Next.js prerenders into the static shell versus what it streams in at
+request time.
 
 - **Green dashed outline** — prerendered and prefetched. Paints immediately.
 - **Red outline** — request-time work, uncached. Arrives after the page has

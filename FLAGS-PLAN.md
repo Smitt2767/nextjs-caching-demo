@@ -194,16 +194,23 @@ Check the environment toggle before you check anything else.
 ### 3c. Code
 
 - `src/lib/flags/ruleset.ts` — fetch the payload, wrapped in `use cache`
+- `src/lib/flags/evaluate.ts` — ruleset + attributes → a value
 - `src/app/flags/page.tsx` — show whether the flag is on
 
 **Test:**
 
 - [ ] `/flags` shows `catalog-kill-switch: ON`
-- [ ] Turn it off in GrowthBook, wait ~30s, reload → shows `OFF`
+- [ ] Turn it off in GrowthBook, press `growthbook-payload` on `/invalidate`,
+      reload → shows `OFF`
 - [ ] The flag value appears in the page's HTML source (View Source, not
       DevTools) — proving it was baked in, not fetched by the browser
 
-**Done when:** flipping the toggle in GrowthBook changes the page.
+The ruleset is cached for hours, so the change does **not** appear on its own —
+that is step 4. Don't shorten the cache to compensate: anything under five
+minutes makes the value ineligible for the static shell and fails the build with
+an error that names something else entirely.
+
+**Done when:** flipping the toggle and invalidating changes the page.
 
 ---
 
@@ -312,8 +319,9 @@ attribute names and types.
 
 **Code:**
 
-- `src/lib/flags/attributes.ts` — pass the attributes into the SDK
-- `src/app/flags/page.tsx` — show the badge flag's value
+- `src/lib/flags/attributes.ts` — read the four attributes off the request
+- `src/lib/flags/sdk.ts` — `pricingBadge`, with `identify`
+- `src/app/_components/targeted-flag-panel.tsx` — show the value
 
 **Test:**
 
@@ -377,16 +385,22 @@ duplicate row.
 
 **Code:**
 
-- `src/lib/flags/hero.ts` — evaluate the flag, return the variant
-- `src/app/flags/page.tsx` — render the variant's headline
+- `src/lib/flags/sdk.ts` — `heroCopy`, with `identify`
+- `src/app/_components/hero-experiment-panel.tsx` — render the variant's headline
 
 **Test:**
 
 - [ ] Page shows one of the three headlines
 - [ ] Clear the `demo-anon-id` cookie and reload a few times → you land in
       different variants
-- [ ] Persona "Corporate network" → **always** control, and the page says it was
-      excluded by targeting, not bucketed
+- [ ] Persona "Corporate network" → **always** control, whatever the id would
+      have hashed to
+
+The last one is how the two mechanisms show up now. The panel prints a value,
+not an explanation, so eligibility-vs-bucketing is something you demonstrate by
+switching persona rather than something the page tells you. If you want the
+explanation back, `decide` can record GrowthBook's reason into a `cache()`-scoped
+map — see `RESEARCH-FLAGS.md` §11.1.
 
 **Done when:** different IDs get different variants, and corporate never does.
 
@@ -644,6 +658,9 @@ Settings**) but it's Pro/Enterprise only, so check whether your plan has it.
 | Targeting condition never matches | Typo in an attribute value, or the attribute isn't registered |
 | Two variants look identical | Duplicate **Value to Force** (step 6) |
 | Everything works locally, nothing works deployed | The `RESEARCH.md` §5.3 problem — plain `use cache` instead of `use cache: remote` |
+| A flag's value never changes, even after `/invalidate` | The `Request` passed to `flag(request)` was hoisted to a module constant. The SDK keys its evaluation cache on that object, so it is memoised for the life of the process (M8) |
+| Build fails with "uncached or runtime data" naming a flag | A flag read normally cannot be prerendered. Either wrap it in `<Suspense>` or, if it has no targeting, read it with `readStatic` (M6) |
+| Discovery endpoint returns 401 with the right secret | It wants an encrypted proof token from the Toolbar, not `FLAGS_SECRET` itself. Mint one with `createAccessProof()` (step 7) |
 
 ---
 
