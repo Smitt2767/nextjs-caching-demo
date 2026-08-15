@@ -118,7 +118,6 @@ async function evaluate<K extends FlagKey>(
       ? (result.value as FlagValue<K>)
       : fallback;
 
-  console.log("Flag value: ", key, value);
   const experimentResult = result.experimentResult;
 
   return {
