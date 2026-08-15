@@ -20,7 +20,7 @@ import type { FeatureApiResponse } from "@growthbook/growthbook";
  *
  *   - **Vercel Edge Config**, when `EXPERIMENTATION_CONFIG` is set. GrowthBook
  *     syncs the payload into it. Reads are replicated to the runtime on Vercel,
- *     which is what will matter in `proxy.ts` at step 11 — proxy cannot use
+ *     which is what will matter in `proxy.ts` at step 12 — proxy cannot use
  *     `use cache`, so precompute needs the ruleset on every request, and a CDN
  *     round trip there would sit on the critical path.
  *   - **The GrowthBook CDN** otherwise, and as a fallback when Edge Config

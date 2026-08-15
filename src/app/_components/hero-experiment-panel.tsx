@@ -1,6 +1,5 @@
 import { ArrivalTimer } from "@/app/_components/arrival-timer";
-import { readAttributes } from "@/lib/flags/attributes";
-import { getTargetedFlag } from "@/lib/flags/evaluate";
+import { heroCopy } from "@/lib/flags/sdk";
 
 /**
  * The three hero variants.
@@ -35,48 +34,24 @@ const COPY: Record<string, { headline: string; body: string }> = {
  * count towards a result.
  *
  * Teams conflate these constantly and then cannot explain why a "50% rollout"
- * served 38%. The panel prints which one applied, so the difference is visible
- * rather than asserted.
+ * served 38%. Switching persona is what shows the difference here: corporate
+ * pins to control however the id hashes, every other persona rolls.
  *
- * **No exposure is recorded here, deliberately.** Firing one is step 8, and
+ * **No exposure is recorded here, deliberately.** Firing one is step 9, and
  * where it may be fired is the entire subject of that step.
  */
 export async function HeroExperimentPanel() {
-  const { attributes } = await readAttributes();
-  const hero = await getTargetedFlag("hero-copy", attributes);
-
-  const copy = COPY[hero.value] ?? COPY.control;
-  const bucketed = hero.experiment?.inExperiment === true;
-
-  /**
-   * Three cases, and getting them apart took two attempts.
-   *
-   * A forced rule returns **no** experiment result at all — GrowthBook stops at
-   * the first matching rule, so nothing was ever hashed. Branching on "is there
-   * an experiment result" therefore lumped the forced case in with "no rule
-   * reached you", which is precisely the distinction this section exists to
-   * draw. Branch on the reason code instead.
-   */
-  const mechanism = bucketed
-    ? `hashing — id ${(hero.experiment?.hashValue ?? "").slice(0, 8)}… landed in variation ${hero.experiment?.variationId}`
-    : hero.ruleSource === "force"
-      ? `targeting — audience=${attributes.audience} matched a rule first, so nothing was hashed`
-      : `neither — no experiment rule was reached (${hero.reason ?? "no reason given"})`;
+  const variant = await heroCopy();
+  const copy = COPY[variant] ?? COPY.control;
 
   return (
     <div data-testid="hero-experiment">
-      <div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[12px]">
+      <div className="mb-3 font-mono text-[12px]">
         <span className="bg-ink px-1.5 py-0.5 font-bold text-surface-raised">
           <ArrivalTimer id="hero-experiment" />
         </span>
-        <span className="text-ink-subtle">
-          {bucketed
-            ? "bucketed — this visitor counts towards the result"
-            : "not bucketed — excluded, and must not be counted"}
-        </span>
       </div>
 
-      {/* The variant itself. Everything else on this card is instrumentation. */}
       <div className="border-l-[3px] border-line pl-3">
         <h3
           data-testid="hero-headline"
@@ -87,43 +62,17 @@ export async function HeroExperimentPanel() {
         <p className="mt-1 text-[14px] text-ink-muted">{copy.body}</p>
       </div>
 
-      <dl className="mt-4 space-y-1.5 text-[13px]">
-        {(
-          [
-            [
-              "variant",
-              <span
-                key="v"
-                data-testid="hero-variant"
-                className="bg-ink px-1.5 py-0.5 font-mono text-[12px] font-bold text-surface-raised"
-              >
-                {hero.value}
-              </span>,
-            ],
-            [
-              "decided by",
-              <span key="r" data-testid="hero-reason" className="font-mono">
-                {hero.source === "fallback"
-                  ? `code default — ${hero.error ?? "ruleset unreachable"}`
-                  : hero.reason}
-              </span>,
-            ],
-            [
-              "mechanism",
-              <span key="m" data-testid="hero-mechanism">
-                {mechanism}
-              </span>,
-            ],
-          ] as const
-        ).map(([term, detail]) => (
-          <div key={term} className="flex flex-col gap-x-3 sm:flex-row">
-            <dt className="w-24 shrink-0 font-mono text-[12px] uppercase tracking-wider text-ink-subtle">
-              {term}
-            </dt>
-            <dd className="text-ink-muted">{detail}</dd>
-          </div>
-        ))}
-      </dl>
+      <p className="mt-4 flex items-baseline gap-x-2 text-[13px]">
+        <span className="font-mono text-[12px] uppercase tracking-wider text-ink-subtle">
+          variant
+        </span>
+        <span
+          data-testid="hero-variant"
+          className="bg-ink px-1.5 py-0.5 font-mono text-[12px] font-bold text-surface-raised"
+        >
+          {variant}
+        </span>
+      </p>
     </div>
   );
 }
@@ -141,9 +90,8 @@ export function HeroExperimentSkeleton() {
         <div className="h-5 w-72 max-w-full bg-ink/10 dark:bg-white/10" />
         <div className="h-3 w-56 max-w-full bg-ink/10 dark:bg-white/10" />
       </div>
-      <div className="mt-4 space-y-1.5" aria-hidden="true">
-        <div className="h-3 w-64 max-w-full bg-ink/10 dark:bg-white/10" />
-        <div className="h-3 w-72 max-w-full bg-ink/10 dark:bg-white/10" />
+      <div className="mt-4" aria-hidden="true">
+        <div className="h-4 w-40 max-w-full bg-ink/10 dark:bg-white/10" />
       </div>
       <span className="sr-only">Assigning a hero variant…</span>
     </div>

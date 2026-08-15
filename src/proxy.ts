@@ -61,7 +61,7 @@ export function proxy(request: NextRequest) {
   // cookies below needs to be forwarded as a header as well, and a visitor
   // arriving on a campaign link sees the effect on that first page view rather
   // than the second. Verified against `next start`; re-check on the deployment
-  // at step 9.
+  // at step 10.
 
   if (!request.cookies.get(ANON_ID_COOKIE)?.value) {
     response.cookies.set(ANON_ID_COOKIE, crypto.randomUUID(), {

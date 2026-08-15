@@ -10,11 +10,12 @@ shaped this way. You don't need it to follow along.
 
 ---
 
-## The 11 steps
+## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6.** Step 4 landed as a button rather than a webhook —
-the free plan has no webhook slot to spare. Findings are in `RESEARCH-FLAGS.md`
-§13.1; two of them were build-breaking surprises worth reading first.
+**Done so far: 1, 2, 3, 4, 5, 6, 7.** Step 4 landed as a button rather than a
+webhook — the free plan has no webhook slot to spare. Findings are in
+`RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
+reading first.
 
 | # | Step | GrowthBook needed? | |
 | --- | --- | --- | --- |
@@ -24,11 +25,12 @@ the free plan has no webhook slot to spare. Findings are in `RESEARCH-FLAGS.md`
 | 4 | Invalidate the ruleset on demand | webhook blocked — free plan | ✅ |
 | 5 | Targeting: a flag that varies by country | **yes** — small | ✅ |
 | 6 | First experiment: 3 variants | **yes** — small | ✅ |
-| 7 | Cache the variant | no |  |
-| 8 | The exposure counter | no |  |
-| 9 | Deploy and measure on Vercel | no |  |
-| 10 | Per-user entitlement flag | **yes** — small |  |
-| 11 | Precompute (build-time variants) | no |  |
+| 7 | Move every flag onto the Flags SDK | no | ✅ |
+| 8 | Cache the variant | no |  |
+| 9 | The exposure counter | no |  |
+| 10 | Deploy and measure on Vercel | no |  |
+| 11 | Per-user entitlement flag | **yes** — small |  |
+| 12 | Precompute (build-time variants) | no |  |
 
 Steps 1–2 need no GrowthBook at all, so we can start immediately.
 
@@ -390,7 +392,92 @@ duplicate row.
 
 ---
 
-## Step 7 — Cache the variant
+## Step 7 — Move every flag onto the Flags SDK ✅
+
+**Goal.** One way to declare a flag, and it is the standard one.
+
+**Why.** Steps 3–6 used the GrowthBook SDK directly, deliberately — the stock
+adapter fetches and caches the payload itself, which is the exact variable those
+steps measure. But precompute (step 12) is a Flags SDK feature and cannot be
+hand-rolled sanely, and running two flag systems side by side is worse than
+either. So everything moves.
+
+**One objection looked fatal and was not.** `flag()` reads `headers()` on every
+call, so nothing declared through it can sit in the static shell — dropping
+`identify` does not help, because the read happens before `identify` is ever
+consulted. But `flag()` dispatches on its arguments, and `flag(request)` takes a
+branch that never touches `next/headers`. An untargeted flag read with a
+stand-in request prerenders, measured as `○` with the live value baked in.
+
+**One cost was accepted rather than worked around.** `flag()` resolves to a
+value, discarding GrowthBook's rule id, reason code and experiment result. The
+pages now render values only; the "decided by" and "mechanism" readouts are
+gone. They could be recovered by having `decide` record into a `cache()`-scoped
+map, but that is a side-channel around the abstraction and the pages read better
+without it.
+
+**Why not `@flags-sdk/growthbook`.** It is not a preference. The stock adapter
+fetches the ruleset inside `decide`, which means (a) one Edge Config read per
+request against zero for `use cache`, and (b) — the decisive one — **step 3 is
+not expressible at all**, because that uncached fetch fails the prerender even
+with the stand-in request. `decide` is ours to write, so each flag calls
+`getRuleset()` directly. No adapter either: one is worth introducing when
+several flags share non-trivial resolution logic, and ours is a single call.
+See `RESEARCH-FLAGS.md` M6–M9.
+
+**One trap worth knowing.** The stand-in `Request` must be constructed per call.
+The SDK memoises evaluations in a `WeakMap` keyed by the request's headers
+object, so hoisting it to a module constant freezes the flag for the lifetime of
+the server process — surviving `/invalidate` and every ruleset change. It looks
+like an optimisation. Measured as M8.
+
+**GrowthBook:** nothing.
+
+**Code:**
+
+- `src/lib/flags/sdk.ts` — every flag, its `decide`, and `readStatic`
+- `src/lib/flags/evaluate.ts` — now purely the evaluation engine, not a public API
+- `src/app/.well-known/vercel/flags/route.ts` — discovery endpoint
+- The three panels now read flags through the SDK
+
+**Configure — ✅ done.** `FLAGS_SECRET` is set. Generate one with —
+
+```bash
+node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
+```
+
+— and add it as `FLAGS_SECRET` in Vercel → Settings → Environment Variables, and
+to `.env`. It is optional for step 7 — without it the Toolbar just shows no
+flags — but **step 12 requires it**: `generatePermutations` throws at build
+time when it is missing.
+
+**Test:**
+
+- [x] `/flags` is still `◐` in the build output, and the kill switch value is
+      still in the HTML the server sent
+- [x] The discovery endpoint lists all three flags
+- [x] Switching persona still changes the targeted flag and the hero variant
+
+A plain `curl` against the discovery endpoint returns **401 even when correctly
+configured**, and that is not a failure. It expects an encrypted proof token
+that the Vercel Toolbar mints — not the secret itself — so passing
+`FLAGS_SECRET` as a bearer token is still rejected. To check it by hand, mint a
+real one:
+
+```bash
+node -e "require('flags').createAccessProof().then(console.log)" > /tmp/proof
+curl -s -H "Authorization: Bearer $(cat /tmp/proof)" \
+  localhost:3000/.well-known/vercel/flags | jq '.definitions | keys'
+```
+
+→ `["catalog-kill-switch", "hero-copy", "pricing-badge"]`
+
+**Done when:** every flag is declared in `sdk.ts` and the page still builds `◐`
+with the kill switch in the shell.
+
+---
+
+## Step 8 — Cache the variant
 
 **Goal.** Render each variant once and share it, instead of re-rendering per
 visitor.
@@ -420,7 +507,7 @@ cache locally and no cache at all on Vercel.
 
 ---
 
-## Step 8 — The exposure counter
+## Step 9 — The exposure counter
 
 **Goal.** Show what happens when the experiment's tracking call ends up inside
 the cache.
@@ -451,7 +538,7 @@ not the build, not TypeScript, not tests.
 
 ---
 
-## Step 9 — Deploy and measure on Vercel
+## Step 10 — Deploy and measure on Vercel
 
 **Goal.** Re-run everything on real infrastructure.
 
@@ -463,8 +550,8 @@ warned us. Local results don't count.
 
 **What to check:**
 
-- [ ] Step 7's frozen timestamp is still frozen on Vercel
-- [ ] Step 8's counter still shows a gap (3-ish vs 50)
+- [ ] Step 8's frozen timestamp is still frozen on Vercel
+- [ ] Step 9's counter still shows a gap (3-ish vs 50)
 - [ ] Step 4's webhook fires — flip a flag, reload, see the change
 - [ ] The ruleset isn't refetched on every request
 - [ ] Deploy again, then re-check: which caches survived the deploy?
@@ -476,7 +563,7 @@ predictions with nothing measured against it.
 
 ---
 
-## Step 10 — Per-user entitlement flag
+## Step 11 — Per-user entitlement flag
 
 **Goal.** Handle the flag type that genuinely can't be shared between users.
 
@@ -506,7 +593,7 @@ own `demo-anon-id` out of the cookie, and paste it into the list.
 
 ---
 
-## Step 11 — Precompute (build-time variants)
+## Step 12 — Precompute (build-time variants)
 
 **Goal.** Make the hero variant fully static — decided before the page renders,
 with no streaming and no flash.

@@ -148,10 +148,11 @@ test.describe("flags: targeting", () => {
       await page.getByTestId("persona-select").selectOption(persona);
       await expect(attr(page, "country")).toHaveText(country);
 
-      const reason = page
-        .getByTestId("targeting-section")
-        .getByTestId("pricing-badge-reason");
-      await expect(reason).toContainText(`country=${country}`);
+      await expect(
+        page
+          .getByTestId("targeting-section")
+          .getByTestId("pricing-badge-country"),
+      ).toHaveText(`country=${country}`);
     });
   }
 
@@ -223,10 +224,9 @@ test.describe("flags: the experiment", () => {
 
     await page.goto("/flags");
 
-    // The two mechanisms are the point of the section: a corporate visitor is
-    // decided by a rule, never bucketed, and must not count towards a result.
-    await expect(hero(page, "hero-mechanism")).toContainText("targeting");
-    await expect(hero(page, "hero-mechanism")).not.toContainText("hashing");
+    // A forced rule decides eligibility before any hashing happens, so this
+    // visitor pins to control however their id would have hashed. The id below
+    // lands elsewhere without the persona — see the test above.
     await expect(hero(page, "hero-variant")).toHaveText("control");
   });
 
@@ -240,8 +240,88 @@ test.describe("flags: the experiment", () => {
     ]);
 
     await page.goto("/flags");
-    await expect(hero(page, "hero-mechanism")).toContainText("hashing");
+
+    // No forced rule matches this persona, so the value comes from hashing the
+    // id — which must produce one of the three declared variants.
+    await expect(hero(page, "hero-variant")).toHaveText(
+      /^(control|urgency|reassurance)$/,
+    );
     await expect(hero(page, "hero-headline")).not.toBeEmpty();
+  });
+});
+
+test.describe("flags: the Flags SDK", () => {
+  test("an untargeted SDK flag is prerendered, a targeted one streams", async ({
+    page,
+  }) => {
+    /**
+     * Position, not presence.
+     *
+     * A response body contains everything eventually, so `toContain` cannot
+     * tell the shell from the stream. Document *order* can: shell content is
+     * written in place, inside `<main>`, while content still pending when the
+     * shell flushed is appended to a hidden buffer after it and moved into
+     * place by a script. So "before `</main>`" means prerendered and "after"
+     * means streamed.
+     *
+     * Both flags below are Flags SDK flags. The difference is that the kill
+     * switch has no targeting and is read with a stand-in request, which takes
+     * the one `flag()` branch that never touches `next/headers`.
+     */
+    const html = await (await page.request.get("/flags")).text();
+    const closingMain = html.indexOf("</main>");
+    const killSwitch = html.indexOf('data-testid="kill-switch-value"');
+    const hero = html.indexOf('data-testid="hero-variant"');
+
+    expect(closingMain).toBeGreaterThan(-1);
+    expect(killSwitch).toBeGreaterThan(-1);
+    expect(hero).toBeGreaterThan(-1);
+
+    // Step 3's whole claim, and what the SDK refactor had to preserve.
+    expect(killSwitch).toBeLessThan(closingMain);
+
+    // The experiment reads attributes, so it cannot be prerendered.
+    expect(hero).toBeGreaterThan(closingMain);
+  });
+
+  test("the discovery endpoint answers only with a valid access proof", async ({
+    request,
+  }) => {
+    // Unauthenticated is 401 — the response describes the app's whole flag
+    // surface, so that is the point rather than a misconfiguration.
+    expect((await request.get("/.well-known/vercel/flags")).status()).toBe(401);
+
+    // And so is the *secret itself*, which is the part that wastes an
+    // afternoon: `verifyAccess` wants an encrypted proof token minted by the
+    // Vercel Toolbar, not the value of FLAGS_SECRET.
+    const secret = process.env.FLAGS_SECRET;
+    test.skip(!secret, "FLAGS_SECRET not in the test environment");
+
+    expect(
+      (
+        await request.get("/.well-known/vercel/flags", {
+          headers: { Authorization: `Bearer ${secret}` },
+        })
+      ).status(),
+    ).toBe(401);
+
+    // A real proof gets the declarations — every flag, not just the ones some
+    // component happened to render.
+    const { createAccessProof } = await import("flags");
+    const proof = await createAccessProof(secret);
+    const response = await request.get("/.well-known/vercel/flags", {
+      headers: { Authorization: `Bearer ${proof}` },
+    });
+
+    expect(response.status()).toBe(200);
+    const body = (await response.json()) as {
+      definitions: Record<string, unknown>;
+    };
+    expect(Object.keys(body.definitions).sort()).toEqual([
+      "catalog-kill-switch",
+      "hero-copy",
+      "pricing-badge",
+    ]);
   });
 });
 

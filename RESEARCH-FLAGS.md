@@ -5,8 +5,8 @@
 | | |
 | --- | --- |
 | **Document ID** | RND-NEXT-FLAGS-002 |
-| **Version** | 0.3 (design study; steps 1–5 built) |
-| **Status** | In progress. Measurements M1–M5 recorded in §13.1. |
+| **Version** | 0.5 (design study; steps 1–7 built, all flags on the Flags SDK) |
+| **Status** | In progress. Measurements M1–M9 recorded in §13.1. |
 | **Author** | Smit Vekariya · smit@cappital.co |
 | **Date opened** | 15 August 2026 |
 | **Prototype** | `nextjs-caching-demo` (throwaway; not production code) |
@@ -18,10 +18,11 @@
 > that this stack's documentation can be correct and still mislead, because the
 > failure was invisible locally. Every claim below is therefore tagged with where
 > it came from: **[docs]**, **[vendor]**, **[inferred]**, or **[measured]**.
-> Five **[measured]** results are now recorded in §13.1, from steps 1–5. Two of
-> them (M2, M3) are build-breaking behaviours whose error messages point
-> somewhere other than the cause, and one (M5) came from a bug report rather
-> than from anything predicted here. Everything else is still unverified.
+> Nine **[measured]** results are now recorded in §13.1, from steps 1–7. Four
+> of them (M2, M3, M6, M9) are build-breaking behaviours whose error messages
+> point somewhere other than the cause, one (M5) came from a bug report rather
+> than from anything predicted here, and one (M8) is a correctness trap that
+> looks like an optimisation. Everything else is still unverified.
 
 ---
 
@@ -95,11 +96,26 @@ value out of it with `await io()`, does.
 hero slot only. Build the exposure counter described in §11.3 first — it is the
 one demo that will change how the team writes this code.
 
-**Amended since 0.1:** §11.1 recommended `@flags-sdk/growthbook` from the outset.
-Steps 3–9 now use the plain GrowthBook SDK with an explicit `use cache` fetch
-instead, because the adapter manages payload fetching and caching internally —
-which is the exact variable those steps exist to measure. The Flags SDK comes in
-at step 11, where precompute genuinely needs it.
+**Amended since 0.1:** §11.1 recommended `@flags-sdk/growthbook` wholesale. The
+position after measuring it (M7) is narrower and better: take the **Flags SDK**,
+leave the **GrowthBook adapter**. The SDK's `Adapter` interface is a `decide`
+function and four optional fields, so supplying our own — one that reads the
+`use cache` ruleset instead of fetching — keeps `precompute`, the Flags
+Explorer, the discovery endpoint and the exposure hooks while removing the stock
+adapter's per-request round trip — and, per M9, it is the only way step 3 exists
+at all, because the stock adapter's own fetch cannot be prerendered.
+
+**Amended again in 0.5.** Every flag is now declared through the SDK, including
+the prerendered one, and each implements `decide` directly against the cached
+ruleset — no adapter at all, since an adapter earns its place when several flags
+share non-trivial resolution logic and ours is one call.
+
+The objection that had kept step 3 on a separate path turned out to be solvable
+rather than inherent: `flag()` reads `headers()`, so the untargeted flag is read
+with a stand-in request, which takes the one dispatch branch that never touches
+`next/headers`. The other objection — that `flag()` discards GrowthBook's reason
+code and experiment result — is real and was accepted rather than worked around:
+the pages render values, and the explanatory readouts were dropped with them.
 
 ---
 
@@ -661,16 +677,47 @@ architecture is not fighting the domain.
 
 ### 11.1 Library choice
 
-**Use `@flags-sdk/growthbook`, not the raw GrowthBook SDK.**
+**Superseded by M7. Take the Flags SDK; implement `decide` yourself.**
 
-`precompute` and `generatePermutations` are Flags SDK features, not GrowthBook
-features. Going raw means hand-rolling encoding, rewriting, and permutation
-generation, which is the entire Tier 2 mechanism. The adapter also brings Edge
-Config payload loading and the Vercel Toolbar's Flags Explorer for local
-overrides **[vendor]**.
+The original recommendation here was "use `@flags-sdk/growthbook`, not the raw
+GrowthBook SDK". Half of that survives measurement.
 
-The raw SDK remains correct if we later leave Vercel. Worth noting the exit cost
-is confined to Tier 2; Tiers 0 and 1 are a few lines either way.
+**What was right.** `precompute` and `generatePermutations` are Flags SDK
+features, not GrowthBook features. Going raw means hand-rolling the encoding,
+the rewrite and the permutation generation, which is the entire Tier 2
+mechanism. The SDK also brings the Vercel Toolbar's Flags Explorer and the
+`.well-known/vercel/flags` discovery endpoint **[vendor]** — both verified
+working here.
+
+**What was wrong.** The claim that the adapter's built-in payload loading is a
+benefit. It reads the ruleset once per request and caches nothing between
+requests (M7), which is the single cost this whole project exists to remove.
+
+**The resolution.** `decide` is yours to write, with or without an adapter.
+Each flag in `src/lib/flags/sdk.ts` calls `getRuleset()` directly, so the ruleset
+stays under `use cache` — 0 reads per request — and every SDK feature keeps
+working. An `Adapter` would be worth introducing once several flags shared
+non-trivial resolution logic; with one call each it is indirection. `sdk.ts` is
+the only place GrowthBook is named either way, so it is also where a move to
+another provider would happen.
+
+**Both apparent costs turned out to be removable, though not by configuration:**
+
+- *Nothing declared through `flag()` can be in the static shell.* True of the
+  default call form, and `identify` is not the cause (M6). But `flag(request)`
+  skips `next/headers` entirely, so an untargeted flag read with a stand-in
+  request prerenders — measured as `○`, fully static, with the live value baked
+  in. The stand-in must be constructed per call (M8).
+- *`flag()` resolves to a value, discarding the rule id, reason code and
+  experiment result.* True and unavoidable at the SDK's boundary. It can be
+  recovered — `decide` sees all of it and can record it into a `cache()`-scoped
+  map that panels read back — but that is a side-channel around the abstraction,
+  and this prototype chose to drop the readouts instead. Worth knowing the
+  option exists if a debugging surface ever needs it.
+
+What remains genuinely fixed is that a **targeted** flag cannot be prerendered,
+which is not an SDK limitation at all — its attributes are request data. Step 12
+is the answer, and it works by removing the need to read them during render.
 
 ### 11.2 Route structure
 
@@ -913,6 +960,180 @@ cost of caching something mutable, which is worth showing rather than hiding.
 resumes at all. A fully static route would serve the stale shell with no flash —
 wrong for longer, and with nothing on screen to reveal it.
 
+**M6. A Flags SDK flag cannot be in the static shell, and `identify` has
+nothing to do with it.** **[measured]**
+
+`getRun` (`flags/dist/next.cjs:208`) resolves the request context through one of
+three branches, and the one a page component hits reads **both** stores
+unconditionally:
+
+```js
+const [headersStore, cookiesStore] = await Promise.all([headers(), cookies()]);
+...
+overrides = await readOverrides(readonlyCookies);
+```
+
+`entities` — the result of `identify` — is computed *after* this, twenty lines
+further down. So the read is not a consequence of targeting. It is inherent to
+what `flag()` is: every invocation must check whether you have overridden that
+flag in the Vercel Toolbar, and the override lives in a cookie.
+
+Putting `catalogKillSwitch()` in a component with no `<Suspense>` around it
+fails the build with the same error class as M3:
+
+```
+Error: Route "/sdk-probe": Next.js encountered uncached or runtime data
+during prerendering.
+`fetch(...)`, `cookies()`, `headers()`, `params`, `searchParams`, or
+`connection()` accessed outside of `<Suspense>` ...
+```
+
+**Removing `identify` does not help** — measured, because it is the obvious
+thing to try. A flag with no `identify`, no adapter and no entities, whose
+`decide()` takes no arguments at all, fails the build identically. The cookie
+read happens whether or not anything about the visitor is wanted.
+
+**What does avoid it.** `flag()` dispatches on its arguments
+(`next.cjs:668–688`), and only the last branch reaches `getRun`:
+
+| Call form | Path | Touches `next/headers`? |
+| --- | --- | --- |
+| `flag(code, group)` | decodes the value out of `code` | **no** — returns before `run()` |
+| `flag(request)` | uses the request you handed it | no |
+| `flag()` inside `evaluate()` | reuses the bulk store | no |
+| `flag()` | `headers()` + `cookies()` | **yes** |
+
+The first row is what the official Vercel example uses, and it is why that
+example prerenders under `cacheComponents` while a naive port of it does not:
+its page is `app/[code]/page.tsx`, and it calls
+`showSummerBannerFlag(params.code, productFlags)`. The decision is already in
+the URL, so there is nothing to read.
+
+**Measured here.** A probe route `precompute-probe/[code]` with
+`generatePermutations(precomputeFlags)` in `generateStaticParams` builds as:
+
+```
+└   /precompute-probe/[code]
+  ├ ◐ /precompute-probe/[code]                    ← App Shell, for unbuilt codes
+  ├ ○ /precompute-probe/eyJhbGciOiJIUzI1NiJ9._f0A…
+  ├ ○ /precompute-probe/eyJhbGciOiJIUzI1NiJ9._v0A…
+  └ ◐ [+10 more paths]
+```
+
+`○` — **fully static**, not `◐`. Twelve permutations from 2 × 2 × 3 options,
+the whole page prerendered, kill switch included. This also settles §7.3's
+first open question: the `[code]` segment does get an App Shell for
+permutations that were never built, so the "no fallback" objection to
+precompute is obsolete on 16.3.
+
+`generatePermutations` requires `FLAGS_SECRET` and fails the build without it,
+which is worth knowing before step 12 rather than during it.
+
+**Consequence for this project.** Until step 12, every SDK flag sits inside a
+boundary; step 3's flag stays on the raw path, because being in the shell is
+the entire claim of step 3. From step 12 the constraint inverts — precompute
+does not work around the header read so much as make it unnecessary.
+
+---
+
+**M7. The stock GrowthBook adapter reads the ruleset once per request.**
+**[measured]**
+
+`@flags-sdk/growthbook@0.3.1` calls `refresh()` on every `decide`, and
+`refresh()` re-reads the payload. Its only cache is a `WeakMap` keyed by the
+request's `headers` object (`dist/index.js:23–52`), so it dedupes across the
+flags *within* one request and caches nothing *between* requests.
+
+Counted by patching `globalThis.fetch` in `instrumentation.ts` and filtering to
+the Edge Config and GrowthBook CDN hosts, three flags per request:
+
+| Path | Ruleset reads / 8 requests |
+| --- | --- |
+| `evaluate.ts` — `getRuleset()` under `use cache` | **0** |
+| `@flags-sdk/growthbook` — stock | **8** |
+| Own `decide` over `getRuleset()` | **0** |
+
+One Edge Config round trip per request, on the critical path of whichever
+boundary the flag sits in — the exact cost §4.1 argues is avoidable, since the
+ruleset is the same bytes for every visitor on Earth.
+
+**Resolution.** The `Adapter` interface is four optional fields and a `decide`,
+so `src/lib/flags/sdk.ts` supplies its own: `decide` calls the same cached
+`getRuleset()` the raw path uses. Measured at 0 reads across 8 requests with the
+SDK path rendering. This keeps every SDK feature that matters — the Flags
+Explorer, the discovery endpoint, `precompute`, exposure hooks — and drops only
+the adapter's fetching.
+
+**What the SDK still cannot give back.** `flag()` resolves to a *value*. The
+rule id, the reason code and the experiment result are not exposed to the
+caller, so a panel that explains *why* a visitor got a variant cannot be built
+on it. That is why steps 3–6 stay on the raw path: those sections exist to show
+the reasoning, and the SDK's own abstraction is what hides it.
+
+**M8. A flag read with a reused `Request` is memoised for the life of the
+process.** **[measured]**
+
+`flag(request)` is the call form that avoids `next/headers` (M6), which is what
+lets an untargeted flag reach the static shell. But the SDK also memoises
+evaluations in a `WeakMap` keyed by the request's headers object
+(`next.cjs:57–64`, `applyResult`). A module-level constant request therefore has
+a stable key forever.
+
+Two flags whose `decide` returns `Date.now()`, one given a shared request and
+one a freshly-constructed one, across three requests:
+
+```
+shared:1786810661797  fresh:1786810676083
+shared:1786810661797  fresh:1786810677107
+shared:1786810661797  fresh:1786810678132
+```
+
+The shared one never moves. In this app that would outlive `/invalidate` and
+every ruleset change with it — the cache would be correct, the flag would not,
+and nothing would report a problem. `readStatic` in `sdk.ts` constructs a
+`Request` per call for this reason alone.
+
+**Generalisation.** Any SDK keyed on object identity turns a hoisted constant
+into a process-lifetime cache. The hoist looks like an optimisation and reads
+like one in review.
+
+---
+
+**M9. The stock GrowthBook adapter cannot be prerendered at all.** **[measured]**
+
+M7 measured the stock adapter as one ruleset read per request against zero for
+a custom one, which is a performance argument. This is the functional one, and
+it is what actually decides the question.
+
+Applying the M6 escape — reading the flag with a stand-in request so it never
+touches `next/headers` — to a flag on `@flags-sdk/growthbook`:
+
+```
+Error fetching global config Error: During prerendering, dynamic "use cache"
+rejects when the prerender is complete.
+Error: Route "/sdk-probe": Next.js encountered uncached or runtime data
+during prerendering.
+```
+
+The adapter's own uncached `fetch` to Edge Config fails the prerender. Avoiding
+the headers read does not help, because the fetch is the second, independent
+reason the scope cannot be static.
+
+**And it cannot be configured away.** `feature().decide` calls `initialize()`
+then `refresh()` on every evaluation (`dist/index.js:91–95`), with no option to
+supply an already-fetched payload. Passing no `globalConfig` makes it worse:
+`refresh()` then calls `growthbook.init()`, which fetches from the CDN instead.
+
+**So avoiding the stock adapter is not a performance preference.** With it,
+step 3 — a flag that costs nothing at request time — is not expressible at all.
+
+**Caveat on the read counts.** M7's 8-vs-0 was measured locally, where Edge
+Config is a real HTTPS round trip (M4: 376ms). On Vercel, Edge Config is
+replicated to the runtime and reads are far cheaper, so the *performance* gap
+there will be much smaller than these numbers suggest — this is RESEARCH.md
+§5.3's lesson pointing the other way for once. The prerender failure above is
+not a matter of degree and holds everywhere.
+
 ### 13.2 Claims still to verify
 
 The following must be measured on the deployed application, using the
@@ -980,4 +1201,6 @@ Claims 1 and 2 are blocking. The rest can proceed in parallel with the build.
 | --- | --- | --- |
 | 0.1 | 15 Aug 2026 | Initial design study. No code, no measurements. |
 | 0.2 | 15 Aug 2026 | Steps 1–3 built. §13 split into measured findings (M1–M4) and remaining claims; risks F8 and F9 added from M2 and M3. |
+| 0.5 | 15 Aug 2026 | Every flag moved onto the Flags SDK, including the prerendered one. M8 (a reused `Request` memoises for the process lifetime) and M9 (the stock adapter cannot be prerendered at all) added. |
+| 0.4 | 15 Aug 2026 | Flags SDK integrated behind a custom adapter. M6 (an SDK flag cannot be in the shell) and M7 (the stock adapter reads the ruleset once per request) added; §11.1 amended. |
 | 0.3 | 15 Aug 2026 | Steps 4–5 built. M5 added from a live bug report — a mutable value in the static shell flashes when it changes — with risk F10. |

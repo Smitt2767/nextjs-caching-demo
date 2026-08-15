@@ -14,21 +14,24 @@ import {
   TargetedFlagPanel,
   TargetedFlagSkeleton,
 } from "@/app/_components/targeted-flag-panel";
-import { getFlag } from "@/lib/flags/evaluate";
+import { getCatalogKillSwitch } from "@/lib/flags/sdk";
 import { AUDIENCES } from "@/lib/personas";
 
 /**
- * A flag with no targeting rules, read at build time.
+ * A flag with no targeting rules, read at build time — through the Flags SDK.
  *
- * No <Suspense> around this, and none needed: `getRuleset()` takes no
- * request-time input, so the fetch resolves during the prerender and the answer
- * is baked into the HTML document. View source and the value is already there.
+ * No <Suspense> around this, and none needed. Two things have to be true for
+ * that to work, and both are in `sdk.ts`: `getRuleset()` takes no request-time
+ * input so the fetch resolves during the prerender, and the flag is read with
+ * `readStatic`, which hands `flag()` a request and so avoids the `headers()`
+ * call every ordinary invocation makes.
  *
  * That is the whole claim of step 3 — a flag does not have to cost anything at
- * request time. This one costs nothing at all.
+ * request time. This one costs nothing at all, and it is a real SDK flag:
+ * declared once, listed by the discovery endpoint, precomputable at step 12.
  */
 async function KillSwitch() {
-  const flag = await getFlag("catalog-kill-switch");
+  const value = await getCatalogKillSwitch();
 
   return (
     <div
@@ -39,20 +42,15 @@ async function KillSwitch() {
       <span
         data-testid="kill-switch-value"
         className={`px-1.5 py-0.5 font-mono text-[12px] font-bold ${
-          flag.value
+          value
             ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950"
             : "bg-red-600 text-white dark:bg-red-500 dark:text-red-950"
         }`}
       >
-        {flag.value ? "ON" : "OFF"}
+        {value ? "ON" : "OFF"}
       </span>
-      <span
-        data-testid="kill-switch-source"
-        className="font-mono text-[12px] text-ink-subtle"
-      >
-        {flag.source === "fallback"
-          ? `code default — ${flag.error ?? "ruleset unreachable"}`
-          : `${flag.source} · read once at build in ${flag.fetchMs}ms`}
+      <span className="font-mono text-[12px] text-ink-subtle">
+        read once at build
       </span>
     </div>
   );
@@ -256,11 +254,11 @@ export default function FlagsPage() {
         </div>
 
         <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
-          Switch to the corporate persona and the panel says{" "}
-          <em>targeting</em>: the answer was settled before any hashing
-          happened, and that visitor must not be counted towards the result.
-          Every other persona shares one bucketing id — yours — so they all land
-          in the same variant. Clear the{" "}
+          Switch to the corporate persona and the variant pins to{" "}
+          <code className="font-mono">control</code> no matter how the id hashes
+          — that is the forced rule deciding eligibility, before any bucketing
+          happens. Every other persona shares one bucketing id — yours — so they
+          all land in the same variant. Clear the{" "}
           <code className="font-mono">demo-anon-id</code> cookie to be issued a
           new one and roll again.
         </p>
@@ -268,7 +266,7 @@ export default function FlagsPage() {
         <p className="mt-2 text-[14px] leading-relaxed text-ink-subtle">
           Nothing here records an exposure yet. An A/B test is an exposure event
           paired with a conversion, and <em>where</em> that event may be fired is
-          the whole subject of step 8 — put it one level too deep and it fires
+          the whole subject of step 9 — put it one level too deep and it fires
           once per cache entry instead of once per visitor, with no error and a
           page that looks perfect.
         </p>

@@ -1,6 +1,6 @@
 import { ArrivalTimer } from "@/app/_components/arrival-timer";
 import { readAttributes } from "@/lib/flags/attributes";
-import { getTargetedFlag } from "@/lib/flags/evaluate";
+import { pricingBadge } from "@/lib/flags/sdk";
 
 /**
  * A flag whose answer depends on the visitor.
@@ -15,8 +15,11 @@ import { getTargetedFlag } from "@/lib/flags/evaluate";
  * over some JSON. Personalisation costs a rule walk here, not a round trip.
  */
 export async function TargetedFlagPanel() {
+  const value = await pricingBadge();
+
+  // Read after the flag, not before: `identify` has already resolved these, so
+  // this is the deduped result rather than a second pass over the cookies.
   const { attributes } = await readAttributes();
-  const badge = await getTargetedFlag("pricing-badge", attributes);
 
   return (
     <div data-testid="targeted-flag">
@@ -34,25 +37,23 @@ export async function TargetedFlagPanel() {
         <span
           data-testid="pricing-badge-value"
           className={`px-1.5 py-0.5 font-mono text-[12px] font-bold ${
-            badge.value
+            value
               ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950"
               : "bg-red-600 text-white dark:bg-red-500 dark:text-red-950"
           }`}
         >
-          {badge.value ? "ON" : "OFF"}
+          {value ? "ON" : "OFF"}
         </span>
         <span
-          data-testid="pricing-badge-reason"
+          data-testid="pricing-badge-country"
           className="font-mono text-[12px] text-ink-subtle"
         >
-          {badge.source === "fallback"
-            ? `code default — ${badge.error ?? "ruleset unreachable"}`
-            : `country=${attributes.country} · ${badge.reason}`}
+          country={attributes.country}
         </span>
       </div>
 
       <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
-        {badge.value
+        {value
           ? `A rule matched ${attributes.country}, so the flag is on for this visitor. Switch the persona above to a US one and it turns off.`
           : `No rule matched ${attributes.country}, so the flag falls through to its default. Switch to an India or UK persona above and it turns on.`}
       </p>
