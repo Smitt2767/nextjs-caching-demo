@@ -138,6 +138,85 @@ async function readFromCdn(clientKey: string): Promise<FeatureApiResponse> {
 }
 
 /**
+ * One read of the ruleset, with no caching of any kind.
+ *
+ * Split out of `getRuleset` so the *only* difference between the two callers is
+ * the cache around them. Edge Config first, CDN as a fallback, failure reported
+ * as `null` — that policy is written once here rather than once per caller,
+ * because a proxy that fell back differently from the render would route a
+ * visitor to a variant the render then disagreed with.
+ *
+ * `ok` is returned alongside because the caller picks the cache lifetime from
+ * it, and `null` alone cannot distinguish "no client key" from "GrowthBook is
+ * down" — both are failures, but only the caller knows what to do about them.
+ */
+async function loadRuleset(): Promise<{ ruleset: Ruleset | null; ok: boolean }> {
+  const clientKey = process.env.GROWTHBOOK_CLIENT_KEY;
+  if (!clientKey) {
+    console.error("[flags] GROWTHBOOK_CLIENT_KEY is not set");
+    return { ruleset: null, ok: false };
+  }
+
+  const startedAt = performance.now();
+
+  const fromEdge = await readFromEdgeConfig(clientKey);
+  if (fromEdge) {
+    return {
+      ruleset: {
+        payload: fromEdge,
+        source: "edge-config",
+        fetchMs: Math.round(performance.now() - startedAt),
+      },
+      ok: true,
+    };
+  }
+
+  try {
+    return {
+      ruleset: {
+        payload: await readFromCdn(clientKey),
+        source: "growthbook-cdn",
+        fetchMs: Math.round(performance.now() - startedAt),
+      },
+      ok: true,
+    };
+  } catch (error) {
+    console.error("[flags] could not read the ruleset", error);
+    return { ruleset: null, ok: false };
+  }
+}
+
+/**
+ * The ruleset for `proxy.ts`, read fresh on every request.
+ *
+ * **Uncached, and it has to be.** `use cache` is a React/Next render-time
+ * directive and proxy runs before the render exists, so `getRuleset()` cannot
+ * be called there at all. Step 12 needs the ruleset in proxy — that is where
+ * the precompute decision is made — so this is the read it gets.
+ *
+ * That makes it the one place in this project where flag I/O sits on the
+ * critical path of every request, which is exactly what the Next docs warn
+ * against: *"Proxy is not intended for slow data fetching."* Two things keep it
+ * honest:
+ *
+ *   - **Edge Config is the fast path**, and it is why the Edge Config source
+ *     exists at all. Its reads are replicated to the runtime rather than
+ *     fetched over a network, so this costs a local lookup.
+ *   - **The CDN fallback is a genuine degradation here**, not the equal
+ *     alternative it is in the render. A cross-region round trip in front of
+ *     every request is worse than the streaming it was meant to avoid. It stays
+ *     because failing open beats failing closed, but if `EXPERIMENTATION_CONFIG`
+ *     is unset, precompute is the wrong tool.
+ *
+ * Note that nothing is lost by not caching here beyond the lookup itself. The
+ * *page* this feeds is prerendered — twelve static variants — so the expensive
+ * half of the work was already paid for at build.
+ */
+export async function readRulesetForProxy(): Promise<Ruleset | null> {
+  return (await loadRuleset()).ruleset;
+}
+
+/**
  * Returns `null` rather than throwing when the ruleset cannot be read, and that
  * is not a style choice.
  *
@@ -154,40 +233,17 @@ export async function getRuleset(): Promise<Ruleset | null> {
   "use cache";
   cacheTag(RULESET_TAG);
 
-  // `cacheLife` is called once per branch below rather than once at the top,
-  // so a failed read can carry a different lifetime from a successful one.
-  // They differ only in `expire`: a success is good for an hour, a failure for
-  // five minutes, and neither is cached as though it were the other.
-  const clientKey = process.env.GROWTHBOOK_CLIENT_KEY;
-  if (!clientKey) {
-    console.error("[flags] GROWTHBOOK_CLIENT_KEY is not set");
-    cacheLife(FAILURE_LIFE);
-    return null;
-  }
+  const { ruleset, ok } = await loadRuleset();
 
-  const startedAt = performance.now();
+  // Called after the read rather than at the top, so a failed read carries a
+  // different lifetime from a successful one. They differ only in `expire`: a
+  // success is good for an hour, a failure for five minutes, and neither is
+  // cached as though it were the other.
+  //
+  // Two calls rather than one on a ternary: `cacheLife` is overloaded on named
+  // profile vs literal object, and a union of the two matches neither overload.
+  if (ok) cacheLife(SUCCESS_LIFE);
+  else cacheLife(FAILURE_LIFE);
 
-  const fromEdge = await readFromEdgeConfig(clientKey);
-  if (fromEdge) {
-    cacheLife(SUCCESS_LIFE);
-    return {
-      payload: fromEdge,
-      source: "edge-config",
-      fetchMs: Math.round(performance.now() - startedAt),
-    };
-  }
-
-  try {
-    const payload = await readFromCdn(clientKey);
-    cacheLife(SUCCESS_LIFE);
-    return {
-      payload,
-      source: "growthbook-cdn",
-      fetchMs: Math.round(performance.now() - startedAt),
-    };
-  } catch (error) {
-    console.error("[flags] could not read the ruleset", error);
-    cacheLife(FAILURE_LIFE);
-    return null;
-  }
+  return ruleset;
 }

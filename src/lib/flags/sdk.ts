@@ -1,7 +1,7 @@
 import type { Identify } from "flags";
 import { dedupe, flag } from "flags/next";
 
-import { readAttributes } from "@/lib/flags/attributes";
+import { resolveAttributesFrom } from "@/lib/flags/attributes";
 import { evaluateRaw, FLAG_DEFAULTS } from "@/lib/flags/evaluate";
 import type { Attributes } from "@/lib/personas";
 
@@ -57,16 +57,23 @@ const origin = (key: string) => `${APP_ORIGIN}/features/${key}`;
  * `dedupe` makes this run once per request no matter how many flags ask for
  * it — five flags must not mean five cookie reads and five geo lookups.
  *
+ * **Reads the stores the SDK hands it, rather than calling `next/headers`
+ * itself.** That matters for `readStatic` below: it evaluates a flag against a
+ * synthetic request, and an `identify` that went to `next/headers` would
+ * quietly answer from the *real* request instead — targeting on one visitor's
+ * attributes while claiming to be a build-time read. Taking the params means
+ * the synthetic request gets synthetic (empty) attributes, which is what it
+ * asked for.
+ *
  * Note what this does *not* cause. A flag carrying this cannot be prerendered,
  * but neither can one without it: `getRun` reads `headers()` and `cookies()`
  * before `identify` is ever consulted, because every invocation has to check
  * for a Toolbar override and the override lives in a cookie (M6). The escape is
  * `readStatic` below, not the removal of this function.
  */
-const identify = dedupe((async () => {
-  const { attributes } = await readAttributes();
-  return attributes;
-}) satisfies Identify<Attributes>);
+const identify = dedupe((({ headers, cookies }) =>
+  resolveAttributesFrom({ headers, cookies })
+    .attributes) satisfies Identify<Attributes>);
 
 /**
  * Read a flag during the prerender, so its value lands in the static shell.

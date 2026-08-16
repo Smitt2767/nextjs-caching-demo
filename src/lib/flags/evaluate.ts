@@ -1,6 +1,6 @@
 import { GrowthBookClient } from "@growthbook/growthbook";
 
-import { getRuleset } from "@/lib/flags/ruleset";
+import { getRuleset, type Ruleset } from "@/lib/flags/ruleset";
 import type { Attributes } from "@/lib/personas";
 
 /**
@@ -43,6 +43,7 @@ export const FLAG_DEFAULTS = {
 export type FlagKey = keyof typeof FLAG_DEFAULTS;
 export type FlagValue<K extends FlagKey> = (typeof FLAG_DEFAULTS)[K];
 
+
 /**
  * Evaluate one flag and return its value.
  *
@@ -58,16 +59,15 @@ export type FlagValue<K extends FlagKey> = (typeof FLAG_DEFAULTS)[K];
  * side-channel that outweighed what it bought. `evalFeature` rather than
  * `getFeatureValue` is kept anyway, so restoring it is a one-line change.
  */
-export async function evaluateRaw<V>(
+export function evaluateWith<V>(
+  ruleset: Ruleset | null,
   key: string,
   attributes: Partial<Attributes>,
   fallback: V,
-): Promise<V> {
-  const ruleset = await getRuleset();
-
-  // `getRuleset` reports failure as `null` rather than throwing, because an
-  // error crossing a `use cache` boundary fails the prerender even when it is
-  // caught out here. See the note on `getRuleset`.
+): V {
+  // The ruleset readers report failure as `null` rather than throwing, because
+  // an error crossing a `use cache` boundary fails the prerender even when it
+  // is caught out here. See the note on `getRuleset`.
   if (!ruleset) return fallback;
 
   const client = new GrowthBookClient();
@@ -81,4 +81,20 @@ export async function evaluateRaw<V>(
   return result.value !== null && typeof result.value === typeof fallback
     ? (result.value as V)
     : fallback;
+}
+
+/**
+ * Evaluate against the cached ruleset — the render path.
+ *
+ * `proxy.ts` cannot use this: `getRuleset()` is a `use cache` scope and proxy
+ * runs before any render exists. It calls `evaluateWith` above against
+ * `readRulesetForProxy()` instead, so the evaluation itself stays identical and
+ * only the ruleset read differs.
+ */
+export async function evaluateRaw<V>(
+  key: string,
+  attributes: Partial<Attributes>,
+  fallback: V,
+): Promise<V> {
+  return evaluateWith(await getRuleset(), key, attributes, fallback);
 }

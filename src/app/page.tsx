@@ -52,7 +52,16 @@ const PAGES = [
     accent: "text-amber-700 dark:text-amber-400",
     title: "Feature flags & experiments",
     body: "Where a flag decision may be read, and where its exposure event must fire. Built one step at a time — see FLAGS-PLAN.md.",
-    meta: "step 1 of 11 · anonymous id",
+    meta: "11 steps · targeting · experiments · exposure events",
+  },
+  {
+    href: "/precomputed",
+    testId: "precomputed-link",
+    rail: "bg-sky-500",
+    accent: "text-sky-700 dark:text-sky-400",
+    title: "Precomputed variants",
+    body: "The same flags as /flags, decided in proxy before the render and served from one of twelve prebuilt pages. The hero arrives in the first HTML instead of streaming in.",
+    meta: "12 pages, not 180 · one per decision, not per visitor",
   },
 ] as const;
 

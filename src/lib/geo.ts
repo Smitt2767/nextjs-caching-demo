@@ -5,6 +5,7 @@ import {
   isCountryCode,
   type CountryCode,
 } from "@/lib/countries";
+import type { RequestReaders } from "@/lib/flags/request-readers";
 
 export const COUNTRY_COOKIE = "demo-country";
 
@@ -31,21 +32,27 @@ export type ResolvedCountry = {
 };
 
 /**
- * Resolve the country for this request. Reads runtime APIs, so this must only
- * ever be called inside a <Suspense> boundary — it can never be part of the
- * static shell.
+ * Resolve the country from stores the caller already holds.
+ *
+ * Synchronous and free of `next/headers`, which is what lets `proxy.ts` and the
+ * Flags SDK's `identify` callback use it — neither can reach the async stores.
+ * Step 12 needs the same country resolution at the edge that the render uses,
+ * and two implementations would drift into two different variants for one
+ * visitor.
  *
  * Order: explicit user preference -> provider geo header -> fallback.
  */
-export async function resolveCountry(): Promise<ResolvedCountry> {
-  const preference = (await cookies()).get(COUNTRY_COOKIE)?.value;
+export function resolveCountryFrom({
+  headers: headerStore,
+  cookies: cookieStore,
+}: RequestReaders): ResolvedCountry {
+  const preference = cookieStore.get(COUNTRY_COOKIE)?.value;
   if (isCountryCode(preference)) {
     return { code: preference, source: "preference", detail: COUNTRY_COOKIE };
   }
 
-  const requestHeaders = await headers();
   for (const header of GEO_HEADERS) {
-    const value = requestHeaders.get(header)?.toUpperCase();
+    const value = headerStore.get(header)?.toUpperCase();
     if (!value) continue;
     // GB is what providers actually send for the United Kingdom.
     const normalized = value === "GB" ? "UK" : value;
@@ -59,4 +66,14 @@ export async function resolveCountry(): Promise<ResolvedCountry> {
   }
 
   return { code: DEFAULT_COUNTRY, source: "fallback", detail: null };
+}
+
+/**
+ * Resolve the country for this request. Reads runtime APIs, so this must only
+ * ever be called inside a <Suspense> boundary — it can never be part of the
+ * static shell.
+ */
+export async function resolveCountry(): Promise<ResolvedCountry> {
+  const [headerStore, cookieStore] = await Promise.all([headers(), cookies()]);
+  return resolveCountryFrom({ headers: headerStore, cookies: cookieStore });
 }

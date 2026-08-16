@@ -598,3 +598,138 @@ test.describe("flags: device classification", () => {
     });
   }
 });
+
+test.describe("flags: precompute", () => {
+  /**
+   * Step 12 inverts every earlier step, and these tests are the proof.
+   *
+   * Elsewhere the page is static and the *decision* arrives at request time,
+   * streaming in behind `<Suspense>`. Here `proxy.ts` decides first, encodes
+   * the decision into a URL segment, and rewrites to a page prebuilt for that
+   * combination — so the hero is in the document rather than appended to it.
+   */
+  test("the hero is prerendered, not streamed", async ({ page }) => {
+    const response = await page.request.get("/precomputed");
+    expect(response.status()).toBe(200);
+
+    // The plan's first test: this route is served from a prerender.
+    expect(response.headers()["x-nextjs-prerender"]).toBe("1");
+
+    // Position, not presence — same reasoning as the SDK test above.
+    const html = await response.text();
+    const closingMain = html.indexOf("</main>");
+    const hero = html.indexOf('data-testid="precomputed-hero-variant"');
+
+    expect(closingMain).toBeGreaterThan(-1);
+    expect(hero).toBeGreaterThan(-1);
+
+    // The whole claim of step 12.
+    expect(hero).toBeLessThan(closingMain);
+
+    // And no skeleton at all, because nothing was ever pending.
+    expect(html).not.toContain('data-testid="precomputed-hero-skeleton"');
+  });
+
+  test("the per-person flag is not baked into the shared page", async ({
+    browser,
+  }) => {
+    /**
+     * The failure this guards against is the worst one available here: twelve
+     * pages are prerendered and *shared*, so a per-person value that ended up
+     * inside one would be served to everybody who resolved to that code.
+     *
+     * Asserted by giving two visitors different ids and requiring different
+     * answers. An earlier version of this test instead checked that the
+     * entitlement appeared after `</main>` — and that is not a sound way to ask
+     * the question. A Suspense child that resolves quickly enough is inlined
+     * before the shell flushes, so the byte position tracks how fast the
+     * entitlement resolved rather than whether it was shared. It failed on a
+     * warm cache while nothing was wrong.
+     */
+    const listed = "55cc9438-ebf9-4073-b612-ad389cd3b4d3";
+
+    const read = async (id: string) => {
+      const context = await browser.newContext();
+      await context.addCookies([
+        { name: "demo-anon-id", value: id, url: "http://localhost:3100" },
+      ]);
+      const page = await context.newPage();
+      await page.goto("/precomputed");
+      const value = await page
+        .getByTestId("entitlement-value")
+        .textContent({ timeout: 15_000 });
+      await context.close();
+      return value;
+    };
+
+    // The id on GrowthBook's forced list, and one that is on nobody's.
+    expect(await read(listed)).toBe("GRANTED");
+    expect(await read("nobody-in-any-list")).toBe("NOT GRANTED");
+  });
+
+  test("the same hero streams on /flags", async ({ page }) => {
+    /**
+     * The control. Without it "the hero is in the shell" only says that this
+     * page is static — not that precompute is what made it static. Same hero,
+     * same 600ms, same visitor; the only difference is where the decision was
+     * made.
+     */
+    const html = await (await page.request.get("/flags")).text();
+    const closingMain = html.indexOf("</main>");
+    const hero = html.indexOf('data-testid="cached-hero-variant"');
+
+    expect(hero).toBeGreaterThan(-1);
+    expect(hero).toBeGreaterThan(closingMain);
+  });
+
+  test("proxy and the render agree on the variant", async ({ page }) => {
+    /**
+     * The failure this guards against is silent and would look like a caching
+     * bug: proxy resolves the attributes itself, and if it derived them any
+     * differently from the render it would rewrite to one variant while the
+     * page believed it was serving another.
+     *
+     * Both go through `resolveAttributesFrom`, which is why this passes — and
+     * why that function has one implementation rather than two.
+     */
+    await page.goto("/precomputed");
+    const rendered = await page
+      .getByTestId("precomputed-hero-variant")
+      .textContent();
+
+    await page.goto("/flags");
+    await expect(page.getByTestId("cached-hero-variant")).toBeVisible();
+    const streamed = await page
+      .getByTestId("cached-hero-variant")
+      .textContent();
+
+    expect(rendered).toBe(streamed);
+  });
+
+  test("the browser URL never shows the code", async ({ page }) => {
+    // A rewrite, not a redirect: no extra round trip, and the variant never
+    // ends up bookmarked or pasted into a bug report.
+    await page.goto("/precomputed");
+    await expect(page.getByTestId("precomputed-hero")).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/precomputed");
+  });
+
+  test("a code that does not verify falls back instead of erroring", async ({
+    page,
+  }) => {
+    /**
+     * `getPrecomputed` throws on a segment that does not verify. Unhandled,
+     * that produced a 200 whose entire `<main>` was missing — a shell with no
+     * content and nothing in the response saying why. This is that regression.
+     */
+    const response = await page.request.get("/precomputed/not-a-real-code");
+    expect(response.status()).toBe(200);
+
+    const html = await response.text();
+    expect(html).toContain('data-testid="precomputed-invalid"');
+
+    // Falls back to the declared defaults rather than rendering nothing.
+    expect(html).toContain('data-testid="precomputed-hero-variant"');
+    expect(html).toContain("control");
+  });
+});
