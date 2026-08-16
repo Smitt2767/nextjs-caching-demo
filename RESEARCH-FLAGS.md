@@ -1564,7 +1564,7 @@ outside the prebuilt twelve, which render on demand with `dynamicParams` left on
 ---
 
 **M17. Precompute moves the decision out of the request, and it is visible in
-document order.** **[measured locally]** · *step 12, not yet deployed*
+document order.** **[measured locally, then confirmed deployed]** · *step 12*
 
 Same hero, same 600ms of work, same visitor, same resolved variant — the only
 difference is where the decision was made.
@@ -1584,6 +1584,36 @@ precomputed page is one whose *shared* decisions were made early; the genuinely
 per-person ones cost exactly what they always cost. Precompute is not a way to
 make personalisation free — it is a way to stop paying per request for the
 decisions that many visitors agree on.
+
+**Confirmed on Vercel**, same visitor across both routes:
+
+| | `/flags` | `/precomputed` |
+| --- | --- | --- |
+| hero markup | byte 74300 — streamed | byte 4018 — **in the shell** |
+| `</main>` | 26765 | 13831 |
+| variant | `urgency` | `urgency` |
+
+`x-nextjs-prerender: 1` **and `x-vercel-cache: PRERENDER`** — the second is the
+one local testing could not produce, and it says the twelve pages are served
+from the prerender on serverless rather than re-rendered per instance.
+
+Latency, 12 samples each, median:
+
+```
+/flags        TTFB 481ms   full document 1089ms   streamed tail 608ms
+/precomputed  TTFB 442ms   full document  596ms   streamed tail 154ms
+```
+
+**~493ms off document completion**, and the 608ms tail on `/flags` is
+`HERO_RENDER_MS` almost exactly — the streamed tail *is* the hero arriving after
+the shell. The 154ms left on `/precomputed` is the per-person entitlement, which
+has no decision space to precompute.
+
+Correctness held deployed too: variants spread 5/4/3 across twelve visitors over
+three distinct codes, the corporate persona pinned to `control` 3/3 via its
+forced rule, a listed id `GRANTED` and an unlisted one `NOT GRANTED` on a page
+twelve visitors share, and an unverifiable segment falling back rather than
+emptying `<main>`.
 
 **Method note, and a correction.** Whether the per-person flag streams was first
 asserted by byte position, matching M6's technique. That is unsound *for this
@@ -1733,16 +1763,16 @@ instance id. One run of 40 requests then reports how many distinct entries exist
 how old each is, and — after pressing `/invalidate` — exactly which instances got
 a fresh one. No GrowthBook involvement, no five-minute race.
 
-**Q8. What does step 12 cost on Vercel?** · **open**
+**Q8. What does step 12 cost on Vercel?** · **half answered (M17)**
 
-Everything in M17 is a local production build, and §5.3 is this document's
-standing warning about exactly that. Two things can only be answered deployed:
+The rendering half is settled: `x-vercel-cache: PRERENDER`, the hero in the
+shell, ~493ms off document completion, and every correctness check holding.
 
-- whether the twelve prerendered pages are actually served from the prerender on
-  serverless, or re-rendered per instance;
-- what the uncached ruleset read in proxy costs on the critical path of every
-  request (F14). Locally, Edge Config and the CDN are both fast and the cost is
-  invisible.
+**The proxy half is not.** Two runs disagreed on the *sign* of the TTFB
+difference — `/precomputed` 65ms slower in one, 39ms faster in another — so the
+uncached ruleset read in proxy is below the noise floor of curl over the public
+internet. Measuring it needs the platform's own function timings rather than a
+client-side stopwatch. Tracked as F14.
 
 **Q9. Does webhook invalidation race the Edge Config sync it depends on?** ·
 **open** · *F15*

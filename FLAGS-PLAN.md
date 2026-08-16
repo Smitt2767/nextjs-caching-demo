@@ -35,9 +35,10 @@ separate system with a separate limit. Findings are in `RESEARCH-FLAGS.md`
 Steps 1–2 need no GrowthBook at all, so we can start immediately.
 
 Everything below is measured against a local production build unless it says
-otherwise. Steps 8–11 were re-measured on Vercel (§13.1 M12, M13); **step 12 has
-not been**, and this project's own §5.3 says that is not the same thing as
-working.
+otherwise. Steps 8–12 were all re-measured on Vercel (§13.1 M12, M13, M17) —
+which this project's own §5.3 insists on, because local success is not evidence
+about serverless. One thing remains unresolved deployed: what the uncached
+ruleset read in proxy actually costs (F14).
 
 ---
 
@@ -915,8 +916,15 @@ permutations *are* prebuilt, so no valid-but-unbuilt code exists to test with.
 It becomes testable the moment a filter is added to `generatePermutations`.
 
 **Done when:** the hero arrives fully formed in the first HTML response. It
-does — locally. **Not yet deployed**, and §5.3 is explicit that this is where
-this project has been wrong before.
+does, and it does deployed: `x-vercel-cache: PRERENDER`, hero at byte 4,018
+inside the shell against 74,300 streamed on `/flags`, and **~493ms off document
+completion** (1,089ms → 596ms). Correctness held too — variants spread across
+three codes, corporate pinned to `control`, and no per-person value baked into a
+page twelve visitors share. See §13.1 M17.
+
+Still open: what the proxy ruleset read costs. Two runs disagreed on the sign of
+the TTFB difference, so it is below the noise floor of a client-side stopwatch
+(F14).
 
 ---
 

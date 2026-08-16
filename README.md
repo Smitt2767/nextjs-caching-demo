@@ -1,13 +1,14 @@
 # Cache Components demo
 
 A measurement rig for Next.js 16 Cache Components, built one finding at a time.
-Four routes:
+Five routes:
 
 | Route | What it is |
 | --- | --- |
 | `/ppr` | The original demo — what Next prerenders into the static shell versus what it streams at request time, colour-coded. Most of this README is about this page. |
 | `/cache-api` | Reference cards for `use cache`, `cacheLife`, `cacheTag`, and the three ways to invalidate. |
-| `/flags` | Feature flags and A/B experiments under Cache Components, via GrowthBook and Vercel's Flags SDK. Built step by step — see [FLAGS-PLAN.md](./FLAGS-PLAN.md); the findings are in [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). |
+| `/flags` | Feature flags and A/B experiments under Cache Components, via GrowthBook and Vercel's Flags SDK. Twelve steps, all done — see [FLAGS-PLAN.md](./FLAGS-PLAN.md); the findings are in [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). |
+| `/precomputed` | The same flags decided in `proxy.ts` *before* the render and served from one of twelve prebuilt pages. The direct comparison against `/flags`. |
 | `/invalidate` | Buttons that expire specific cache tags, so you can watch the effect on the other pages. |
 
 Two companion reports carry the measurements rather than the intentions:
@@ -397,6 +398,85 @@ rejects unstable values during prerender. Timing code uses `performance.now()`
 (and lives in `src/lib/load-country.ts`, not in a component body, because it's
 impure).
 
+## Feature flags — `/flags` and `/precomputed`
+
+The premise "feature flags make a page dynamic" is false, and taking it apart is
+what these two routes are for. A flag decision is a pure function of a **ruleset**
+(the same bytes for every visitor, ordinary cacheable content) and **attributes**
+(ordinary request data). The join costs microseconds and touches no network.
+
+`/flags` walks the tiers a step at a time — a kill switch read at build and baked
+into the static shell, a targeted flag that streams, a three-variant experiment,
+the variant cached by *variant* rather than by visitor, and an entitlement flag
+that can only live in `use cache: private`.
+
+`/precomputed` inverts the arrangement. `proxy.ts` decides the shared flags,
+encodes them into a signed URL segment, and rewrites to a page prebuilt for that
+combination. Same visitor, same variant, measured on the deployment:
+
+| | `/flags` | `/precomputed` |
+| --- | --- | --- |
+| hero markup | byte 74,300 — **streamed** | byte 4,018 — **in the shell** |
+| full document | 1,089ms | 596ms |
+| streamed tail | 608ms | 154ms |
+
+That 608ms tail is the hero's simulated render arriving after the shell; on
+`/precomputed` the 154ms left is the per-person entitlement, which cannot be
+precomputed and should not be.
+
+**Twelve pages, not 180.** The prerendering is per *decision*, not per visitor:
+the attributes have 180 combinations, the three shared flags have 2 × 2 × 3 = 12
+outcomes. Adding a country or an audience adds no pages; adding a three-option
+flag triples them.
+
+**The highest-value thing on either page is the exposure counter.** An A/B test
+is not the variant rendering — it is an exposure event paired with a later
+conversion. Put that call inside a cached scope and it fires once per cache
+entry instead of once per visitor. Measured here at **3 exposures / 50
+visitors**, with conversions still attaching to all fifty. Nothing catches it:
+not the build, not TypeScript, not a test, not any timing measurement. The
+damage is to the data. `/flags` runs both shapes side by side so the ratio is
+visible.
+
+Flag changes reach the app three ways: a GrowthBook **Event Webhook** (the SDK
+webhook slot is usually taken by a platform integration, and the two sign
+differently), the `growthbook-payload` button on `/invalidate`, and — worth
+knowing before building either — on its own within five minutes, because
+`cacheLife("hours")` is `stale: 300`.
+
+### These two routes need keys
+
+`/ppr`, `/cache-api` and `/invalidate` run with no configuration. The flag routes
+do not — put these in `.env`:
+
+| Variable | For | Needed by |
+| --- | --- | --- |
+| `GROWTHBOOK_CLIENT_KEY` | reading the ruleset from GrowthBook's CDN | `/flags` |
+| `FLAGS_SECRET` | signing precomputed URL segments | `/precomputed` — the **build fails without it** |
+| `EXPERIMENTATION_CONFIG` | Vercel Edge Config, if you use it as the ruleset source | optional |
+| `GROWTHBOOK_EVENT_WEBHOOK_SECRET` | verifying event-webhook deliveries | the webhook only |
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+Without a client key the flags fall back to their declared defaults rather than
+erroring, so the pages still render — they just stop being interesting.
+[FLAGS-PLAN.md](./FLAGS-PLAN.md) step 3 covers the GrowthBook side.
+
+## Skills
+
+Two Claude Code skills in `.claude/skills/`, generalised out of the two research
+reports so they can be lifted into any Next.js project:
+
+| Skill | Covers |
+| --- | --- |
+| `nextjs-cache-components` | Correctness under `cacheComponents`. Organised by *how you find out*: build-time failures, deployment-only failures, silent failures, and traps in measuring. |
+| `growthbook-nextjs-flags` | Flags and experiments on top of that — the tiers, the exposure trap, and precompute in its own reference. |
+
+Neither mentions this project. `cp -r` either directory into another repo and it
+works.
+
 ## Design notes
 
 Direction: **Minimalism / Swiss** — grid-based, high contrast, no decoration
@@ -471,5 +551,11 @@ beats the uncached one, that the component-cached slot beats *both* and freezes
 its render timestamp, and that every panel ships a snippet that toggles on its
 own. Those are asserted as ordering and identity, never as a stopwatch, so they
 don't flake.
+
+`e2e/flags.spec.ts` does the same job for the flag routes: that an untargeted
+flag is prerendered and a targeted one streams, that the exposure counts diverge,
+that proxy and the render agree on the variant, that a precomputed segment that
+does not verify falls back instead of emptying the page, and that two visitors
+never share a per-person answer on a page twelve of them are served from.
 
 See `instant-nav.rig.md` for how the build/serve/measure loop is wired.
