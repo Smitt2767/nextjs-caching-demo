@@ -49,6 +49,14 @@ absurd; building 12 is routine. The number of pages you must prerender is the
 product of the flags' option counts and is entirely independent of how much you
 know about the visitor (§7.1).
 
+**Built and measured** at step 12: the implemented attribute set has 180
+combinations and the three shared flags have 2 × 2 × 3 = 12 outcomes, so the
+build produces exactly twelve pages. Same hero, same visitor, same variant — in
+the static shell on the precomputed route and streamed on `/flags` (M17). What
+precompute does *not* do is make personalisation free: the per-person
+entitlement flag streams on both routes, because a flag keyed on individual
+identity has no decision space to enumerate.
+
 **Four integration tiers are available**, and a real application uses more than
 one at once (§6). Ranked by what they cost and what they buy:
 
@@ -365,10 +373,18 @@ where the in-memory cache does not exist **[measured, companion report]**.
 - **Cost:** the flagged region streams in after the shell. For a hero, that is a
   visible reflow.
 
-### 6.2 Tier 2 — precompute and rewrite (build time)
+### 6.2 Tier 2 — precompute and rewrite (build time) · **built (M17)**
 
 Proxy evaluates the flags, encodes the *results* into a URL segment, and rewrites
 to a fully prerendered page for that combination. The browser URL is unchanged.
+
+**Two things in the sketch below do not survive contact with this codebase**,
+both because proxy runs before any render exists. `precompute(flags)` takes no
+request and calls each flag's `decide`, and ours reach `getRuleset()` — a
+`use cache` scope, unavailable in proxy. And `app/[code]/` at the root is
+needed only when precomputing the *home* page, where a root-level `[code]`
+would otherwise swallow every route. See M17 and FLAGS-PLAN.md step 12 for what
+was actually built.
 
 ```ts
 // proxy.ts
@@ -410,7 +426,8 @@ decades (§10).
 - **Cardinality:** Π(options per flag). See §7.
 - **Flag change latency:** requires regeneration of the affected permutations.
 - **Cost:** proxy runs on every request to the matched paths, including RSC
-  prefetches **[inferred — measure, §13]**.
+  prefetches **[inferred — measure, §13]** — and now also performs an
+  **uncached** ruleset read there, since `use cache` is unavailable. F14.
 
 ### 6.3 Tier 3 — client-side
 
@@ -600,7 +617,7 @@ Extends the companion report's §5.2 table with the stores this integration adds
 
 ### 8.6 Invalidation
 
-GrowthBook fires an SDK webhook when a flag changes. Point it at a Route Handler:
+GrowthBook fires a webhook when a flag changes. Point it at a Route Handler:
 
 ```ts
 // app/api/growthbook-webhook/route.ts
@@ -617,6 +634,21 @@ a few seconds of staleness is fine and a stampede is not. `updateTag` is the wro
 tool here: it expires immediately and forces the next request to block, and it is
 callable only from Server Actions. `revalidateTag` cannot be called from Proxy
 **[docs]**.
+
+**Which webhook, and it matters** (M18). GrowthBook has two systems. **SDK
+Webhooks** push the ruleset payload and are limited to one per organisation on
+the free plan — Vercel's Edge Config sync holds it. **Event Webhooks** are a
+separate system with a separate limit, send a notification rather than a
+payload, and sign differently (`X-GrowthBook-Signature`, hex, over the raw body
+alone). A handler that only invalidates needs the notification, so the event
+webhook is sufficient and the SDK slot stays with Edge Config.
+
+**How much this buys you is smaller than it looks.** `cacheLife("hours")` is
+`{ stale: 300, … }`, and `stale` is what governs: a change propagates on its own
+within five minutes, and within 24 hours at the outside (M19). Invalidation
+makes a change *immediate*; it is not what makes it happen. It can also make
+things briefly worse — F15, where the refetch beats the Edge Config write it
+depends on.
 
 ---
 
@@ -756,8 +788,12 @@ so a section per tier would have meant three copies of the same page:
 | Step 5 | Tier 1 — a flag that reads `country` | Streams. Same cached ruleset; only the attributes are per-request |
 | Step 6 | An experiment — targeting and bucketing as distinct mechanisms | Stable per visitor, spread across visitors, corporate excluded |
 
-Tier 2 (`app/[code]/`, proxy rewrite) is step 12 and not yet built. Tier 3 is
-out of scope — §6.3 explains why it is the wrong answer for anything measured.
+| Step 12 | Tier 2 — precompute and rewrite | Twelve prerendered pages, one per decision. The hero is in the shell rather than streamed (M17) |
+
+Tier 2 landed as `app/precomputed/[code]/`, not the `app/[code]/` root sketched
+in §6.2 — a root-level `[code]` is only necessary when the *home* page is the
+one being precomputed. Tier 3 is out of scope — §6.3 explains why it is the
+wrong answer for anything measured.
 
 ### 11.3 The exposure counter · built (M11)
 
@@ -809,6 +845,9 @@ order:
 | **F11** | A `Request` hoisted out of `flag(request)` to a module constant memoises the flag for the lifetime of the server process, outliving every invalidation | Medium | Nothing automated; the value simply stops changing | Construct the stand-in per call. Hoisting it looks like an optimisation and reviews like one (§13.1 M8) |
 | **F12** | A visitor-specific value passed as a prop into a variant-keyed cached component; one entry per variant silently becomes one per visitor | High | Nothing automated. Cache hit rates stay plausible; only the entry count reveals it | Pass decisions in, never identities. `cookies()`/`headers()` are blocked inside the scope but props are not (§13.1 M10) |
 | **F13** | A `use cache` or `remote` scope **awaited** inside `use cache: private`; passes every local check and fails on deployment | High | Deployed measurement only — the local build, runtime and e2e suite all pass | Evaluate outside the private scope and pass the finished value in; return elements rather than awaiting them (§13.1 M14, RND-NEXT-CACHE-001 §5.3a) |
+| **F14** | Precompute puts uncached ruleset I/O in proxy, on the critical path of **every** request — the thing the Next docs explicitly warn proxy is not for | Medium | Deployed latency only; invisible locally, where Edge Config and the CDN are both fast | Edge Config, whose reads are replicated to the runtime. Without `EXPERIMENTATION_CONFIG` the fallback is a CDN round trip per request, which is worse than the streaming precompute replaced (§13.1 M17) |
+| **F15** | Webhook invalidation **races** the Edge Config sync it depends on; the refetch wins, caches the old payload, and the invalidation makes staleness worse | Medium | Nothing automated. Looks exactly like "the webhook did not fire" | `revalidateTag(tag, "max")` so nobody waits on the refetch; `/invalidate` as the manual override. **Unmeasured** (§13.1 M18) |
+| **F16** | An unverifiable precompute segment throws inside the page and the response is a **200 with an empty `<main>`** — no error, nothing saying why | Medium | Only by looking at the body; the status code is fine | Catch and fall back to declared defaults, and say so in the UI. Regression test in `e2e/flags.spec.ts` (§13.1 M17) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -1457,4 +1496,228 @@ prediction. Re-measure on the next deployment.
 the payload as `{"defaultValue": false}` — created, enabled and completely
 inert. GrowthBook saves a feature immediately but holds **rule** edits as an
 unpublished draft, so a flag can be live, readable and do nothing.
+
+---
+
+**M15. `params` is runtime data under Cache Components, and reading it in the
+page body fails the prerender.** **[measured]** · *step 12*
+
+`/precomputed/[code]` has a `generateStaticParams` returning all twelve codes,
+so every value of `params.code` is known at build. Reading it in the page body
+still fails:
+
+```
+Error: Route "/precomputed/[code]": Next.js encountered uncached or runtime
+data during prerendering.
+
+`fetch(...)`, `cookies()`, `headers()`, `params`, `searchParams`, or
+`connection()` accessed outside of `<Suspense>` prevents the route from being
+prerendered…
+```
+
+`params` is in that list alongside `cookies()`. Being enumerable at build does
+not exempt it.
+
+**The fix is the documented one** (`generate-static-params.md`, "Route Handlers
+with Cache Components"): hand the **unresolved promise** to a `use cache` scope
+and resolve it inside.
+
+```tsx
+async function decodeVariant(params: Promise<{ code: string }>) {
+  "use cache";
+  cacheLife("max");
+  const { code } = await params;      // legal here, not in the page body
+  …
+}
+```
+
+Give that scope a `cacheLife`, or it inherits the `default` profile and
+revalidates a pure function every 15 minutes.
+
+---
+
+**M16. A prerender rejects an uncached asynchronous gap, whatever the code is
+waiting on.** **[measured]** · *step 12*
+
+The hero component on the precomputed page simulates expensive work with a
+timer, exactly as step 8's does:
+
+```tsx
+await new Promise((resolve) => setTimeout(resolve, HERO_RENDER_MS));
+```
+
+It reads no cookie, no header, no network — nothing on the list M15 quotes — and
+it failed the build with the *same* "uncached or runtime data" error, with
+`--debug-prerender` naming that line.
+
+**The rule is not "do not read request data during a prerender".** It is that a
+prerendered scope must not *wait* on anything it has not declared cacheable. A
+`setTimeout` is deterministic, request-independent, and still not allowed. Adding
+`"use cache: remote"` to the component fixed it.
+
+The initial comment on that component said a cache inside a prerendered page was
+"a cache around something already static, and pointless". That was wrong twice:
+it is required for the build to pass at all, and it does real work for codes
+outside the prebuilt twelve, which render on demand with `dynamicParams` left on.
+
+---
+
+**M17. Precompute moves the decision out of the request, and it is visible in
+document order.** **[measured locally]** · *step 12, not yet deployed*
+
+Same hero, same 600ms of work, same visitor, same resolved variant — the only
+difference is where the decision was made.
+
+| | `/flags` | `/precomputed` |
+| --- | --- | --- |
+| hero markup | byte 73950 | byte 3021 |
+| `</main>` | byte 26676 | byte 12047 |
+| verdict | **streamed** | **in the static shell** |
+| skeleton | present | none |
+
+`x-nextjs-prerender: 1` on `/precomputed`, and twelve prerendered paths in the
+build output.
+
+**What did not change is the point.** `beta-entitlement` streams on both. A
+precomputed page is one whose *shared* decisions were made early; the genuinely
+per-person ones cost exactly what they always cost. Precompute is not a way to
+make personalisation free — it is a way to stop paying per request for the
+decisions that many visitors agree on.
+
+**Method note, and a correction.** Whether the per-person flag streams was first
+asserted by byte position, matching M6's technique. That is unsound *for this
+particular claim*: a Suspense child that resolves quickly enough is inlined
+before the shell flushes, so the offset tracks how fast the entitlement resolved
+rather than whether it was shared. It failed on a warm cache with nothing wrong.
+The claim that matters — that no per-person value is baked into a page twelve
+visitors share — is now asserted by giving two visitors different ids and
+requiring different answers.
+
+---
+
+**M18. GrowthBook has two webhook systems and they do not sign the same way.**
+**[measured]** · *step 4, reopened*
+
+Step 4 recorded that no webhook slot was available: the free plan allows one SDK
+webhook per organisation and Vercel's Edge Config sync holds it. That is still
+true, and it is **not the whole picture**. Event Webhooks are a separate system
+with a separate limit, and that slot was free.
+
+Pointed at the existing handler, an Event Webhook returned `400 missing
+signature headers`:
+
+| | SDK Webhook | Event Webhook |
+| --- | --- | --- |
+| headers | `webhook-id`, `webhook-timestamp`, `webhook-signature` | `X-GrowthBook-Signature` |
+| signed | `id.timestamp.body` | the raw body alone |
+| digest | base64 | hex |
+| secret | yours | GrowthBook's, `ewhk_`-prefixed |
+
+**An event webhook is sufficient here** because the handler never reads the
+payload. An SDK webhook pushes the *ruleset*; an event webhook sends a
+*notification*; invalidating a cache tag needs only the latter. Edge Config
+keeps the SDK slot and the payload sync it was already doing.
+
+**Event Webhooks are replayable by construction.** Signing the body alone means
+no timestamp in the signed material, so a captured delivery stays valid
+indefinitely and nothing in the route can tell. Tolerable only because a replay
+marks one cache tag stale — idempotent, one ruleset read, reveals nothing.
+
+**Unmeasured, and predicted to bite:** a flag change fires both webhooks at
+once. If our invalidation-triggered refetch beats Vercel's Edge Config write, we
+re-read the old payload and cache it for another hour — the invalidation making
+things worse. See F15.
+
+---
+
+**M19. `cacheLife("hours")` propagates a flag change in five minutes, not one
+hour — and that is what kept §14 Q7 unanswerable.** **[measured, on Vercel]**
+
+Two attempts to measure whether `updateTag` reaches every serverless instance
+both failed the same way: by the time the measurement ran, every instance
+already agreed, with no invalidation involved.
+
+The first attempt ran two days after the deploy. `hours` is `{ stale: 300,
+revalidate: 3600, expire: 86400 }` (`next/dist/server/config-shared.js`), so
+every entry had passed `expire` and each instance had refetched independently.
+
+The second attempt warmed ~29 instances, then waited for a GrowthBook change,
+then measured — and found all 40 requests already carrying the new value. **The
+governing number is `stale: 300`, not `revalidate: 3600`:** past five minutes an
+entry is refreshed on next touch, so the practical propagation window is five
+minutes.
+
+**Fan-out is high enough for the experiment to work** — 29 distinct instances
+across 40 requests, by `x-vercel-id` prefix — so a failure to invalidate would
+show as roughly 1 in 40 flipping rather than 40. There is no ambiguous middle.
+What is missing is an instrument, not resolving power: inferring cache behaviour
+from *flag values* only works when GrowthBook moves, and it has to move inside a
+five-minute window. **Q7 stays open**, and the way to close it is a probe that
+reports cache-entry identity directly — a filled-at stamp captured inside the
+`use cache` scope, exposed with the serving instance id.
+
+**Practical consequence regardless of Q7:** a flag change propagates within five
+minutes on its own, and within 24 hours in the worst case. `/invalidate` and the
+webhook are about making that *immediate*, not about making it happen.
+
+---
+
+## 14. Open questions
+
+Referenced from §13.1 and from `src/lib/flags/ruleset.ts` before this section
+existed. The numbering below preserves the two identifiers already in use rather
+than renumbering and invalidating them.
+
+**Q5. What happens to in-flight caches when you deploy?** · **answered (M13)**
+
+A deploy discards every render and keeps every assignment. Eight of eight
+bucketing decisions were unchanged across a deploy, because assignment is a hash
+of the visitor id against rules in the payload and neither is stored anywhere. So
+a deploy costs latency, never experiment integrity.
+
+**Q7. Does `updateTag` reach every serverless instance for a plain `use cache`
+entry?** · **open**
+
+This decides whether `getRuleset()` should be `use cache` or `use cache: remote`.
+If invalidation only reaches the instance that served `/invalidate`, then plain
+`use cache` makes `/invalidate` — and the step 4 webhook — unreliable in
+production, and `remote` is required for correctness rather than performance.
+
+The case each way is in `ruleset.ts`, and neither side has a number behind it.
+Two attempts to measure it failed for the reason recorded in **M19**: the
+propagation window is `stale: 300`, so the ruleset refreshes on its own within
+five minutes and there is nothing stale left to detect. Fan-out is not the
+problem — 29 distinct instances across 40 requests, so a failure would show as
+roughly 1 in 40 flipping.
+
+**What would close it** is an instrument rather than another attempt: a filled-at
+stamp captured *inside* the `use cache` scope and exposed with the serving
+instance id. One run of 40 requests then reports how many distinct entries exist,
+how old each is, and — after pressing `/invalidate` — exactly which instances got
+a fresh one. No GrowthBook involvement, no five-minute race.
+
+**Q8. What does step 12 cost on Vercel?** · **open**
+
+Everything in M17 is a local production build, and §5.3 is this document's
+standing warning about exactly that. Two things can only be answered deployed:
+
+- whether the twelve prerendered pages are actually served from the prerender on
+  serverless, or re-rendered per instance;
+- what the uncached ruleset read in proxy costs on the critical path of every
+  request (F14). Locally, Edge Config and the CDN are both fast and the cost is
+  invisible.
+
+**Q9. Does webhook invalidation race the Edge Config sync it depends on?** ·
+**open** · *F15*
+
+Predicted, not measured. A flag change fires both webhooks at once; if our
+refetch beats Vercel's Edge Config write, we cache the old payload for another
+hour and the invalidation has made staleness worse. Testable by changing a flag
+and sampling the deployed value every few seconds, but it needs the event webhook
+live with its secret configured.
+
+**Permanently out of scope**
+
+- Per-request ruleset read count on the deployment — round-trip noise swamps the
+  signal (§13.1, step 10).
 

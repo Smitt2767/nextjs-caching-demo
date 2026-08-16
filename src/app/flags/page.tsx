@@ -38,7 +38,8 @@ import { AUDIENCES } from "@/lib/personas";
  *
  * That is the whole claim of step 3 — a flag does not have to cost anything at
  * request time. This one costs nothing at all, and it is a real SDK flag:
- * declared once, listed by the discovery endpoint, precomputable at step 12.
+ * declared once, listed by the discovery endpoint, and precomputed on
+ * /precomputed.
  */
 async function KillSwitch() {
   const value = await getCatalogKillSwitch();

@@ -12,17 +12,17 @@ shaped this way. You don't need it to follow along.
 
 ## The 12 steps
 
-**Done so far: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11.** Step 4 landed as a button rather than a
-webhook — the free plan has no webhook slot to spare. Findings are in
-`RESEARCH-FLAGS.md` §13.1; three of them were build-breaking surprises worth
-reading first.
+**All twelve done.** Step 4 landed as a button *and*, eventually, a webhook —
+the free plan has no **SDK** webhook slot to spare, but Event Webhooks are a
+separate system with a separate limit. Findings are in `RESEARCH-FLAGS.md`
+§13.1; five of them were build-breaking surprises worth reading first.
 
 | # | Step | GrowthBook needed? | |
 | --- | --- | --- | --- |
 | 1 | Anonymous visitor ID | no | ✅ |
 | 2 | Targeting attributes + persona switcher | no | ✅ |
 | 3 | Connect GrowthBook, one simple flag | **yes** — first setup | ✅ |
-| 4 | Invalidate the ruleset on demand | webhook blocked — free plan | ✅ |
+| 4 | Invalidate the ruleset on demand | **yes** — event webhook | ✅ |
 | 5 | Targeting: a flag that varies by country | **yes** — small | ✅ |
 | 6 | First experiment: 3 variants | **yes** — small | ✅ |
 | 7 | Move every flag onto the Flags SDK | no | ✅ |
@@ -30,9 +30,14 @@ reading first.
 | 9 | The exposure counter | no | ✅ |
 | 10 | Deploy and measure on Vercel | no | ✅ |
 | 11 | Per-user entitlement flag | **yes** — small | ✅ |
-| 12 | Precompute (build-time variants) | no |  |
+| 12 | Precompute (build-time variants) | no | ✅ |
 
 Steps 1–2 need no GrowthBook at all, so we can start immediately.
+
+Everything below is measured against a local production build unless it says
+otherwise. Steps 8–11 were re-measured on Vercel (§13.1 M12, M13); **step 12 has
+not been**, and this project's own §5.3 says that is not the same thing as
+working.
 
 ---
 
@@ -214,15 +219,15 @@ an error that names something else entirely.
 
 ---
 
-## Step 4 — Faster flag changes · ⚠️ built, but the webhook is blocked
+## Step 4 — Faster flag changes ✅
 
 **Goal.** Cut the wait between flipping a flag and seeing it.
 
-**Outcome: a button on `/invalidate`.** The webhook that would have done this
-automatically is not available on the free plan — see below. The handler is
-written and tested and will take over the moment a slot exists.
+**Outcome: a button on `/invalidate`, and an Event Webhook that presses it for
+you.** The webhook took two attempts to find, because the obvious slot really is
+blocked and the working one is a different feature entirely.
 
-### What blocked it
+### What blocked the obvious route
 
 GrowthBook's free plan allows **one SDK webhook per organisation**. Not per
 connection — creating a second SDK Connection gets you a second slot in the UI
@@ -231,13 +236,48 @@ slot is already taken by **Vercel's Edge Config sync**, which is itself an SDK
 webhook (`Managed by Vercel`), and giving it up would leave Edge Config stale
 forever.
 
-Two alternatives were checked and neither helps:
+- **Global SDK Webhooks** — self-hosted GrowthBook only, not Cloud. No help.
 
-- **Global SDK Webhooks** — self-hosted GrowthBook only, not Cloud.
-- **Event Webhooks** (Settings → Webhooks) — a separate system with a separate
-  limit, and worth trying if you ever want instant invalidation. It uses a
-  different signature scheme (`X-GrowthBook-Signature`, `ewhk_` secret), so it
-  needs a second verification path in the route.
+### What actually worked: Event Webhooks
+
+**SDK Configuration → Event Webhooks** is a separate system with its own limit,
+and that slot was free. It is enough here for a reason worth stating: an SDK
+webhook pushes the *ruleset payload*, an event webhook sends only a
+*notification*, and this handler never reads the payload. It needs to be told
+that something changed; Edge Config keeps doing the payload sync it was always
+doing.
+
+Pointed at the route as-is it returned `400 missing signature headers`, because
+the two systems do not sign the same way:
+
+| | SDK Webhook | Event Webhook |
+| --- | --- | --- |
+| headers | `webhook-id`, `webhook-timestamp`, `webhook-signature` | `X-GrowthBook-Signature` |
+| signed | `id.timestamp.body` | the raw body alone |
+| digest | base64 | hex |
+| secret | yours | GrowthBook\'s, `ewhk_`-prefixed |
+
+Both paths are now in the route, chosen by which header arrived rather than by
+configuration. The event secret has its own variable,
+`GROWTHBOOK_EVENT_WEBHOOK_SECRET`, so the two schemes cannot be handed each
+other\'s secret and fail with a signature error that looks like tampering.
+
+**Set the events filter to `feature.*` *and* `experiment.*`.** `feature.*` alone
+misses experiment edits, and the ruleset payload contains experiments — so a
+change to `hero-copy`\'s experiment rule would notify nobody.
+
+**`webhook.test` is acknowledged without invalidating.** The point of the test
+button is to confirm the URL and the signature; a test that quietly expired
+production\'s cache would be a surprising thing for it to do.
+
+**⚠️ There is a race with Edge Config, and it is unmeasured.** A flag change
+fires both webhooks at once: the SDK one tells Vercel to update Edge Config
+(seconds), the event one tells us to invalidate (immediate). If our refetch
+beats the Edge Config write we re-read the **old** payload and cache it for
+another hour — the invalidation making things worse rather than better.
+`revalidateTag(tag, "max")` softens it, since nobody waits on the refetch, but
+the window is real. Symptom: "changed a flag, webhook went green, page still
+shows the old value." The `/invalidate` button remains the reliable override.
 
 ### What we did instead
 
@@ -252,14 +292,15 @@ a better demo — the moment the value changes is a moment you chose.
 `/flags` carries a note pointing at it, because "I changed the flag and nothing
 happened" is otherwise indistinguishable from a bug.
 
-### The handler, if you ever get a slot
+### The handler
 
-`src/app/api/growthbook-webhook/route.ts` is complete. Point a webhook at
-`/api/growthbook-webhook`, format **Standard (no SDK payload)**, and put the
-shared secret in `GROWTHBOOK_WEBHOOK_SECRET`. Nothing else changes — it expires
-the same tag the button does.
+`src/app/api/growthbook-webhook/route.ts`. Point an **Event Webhook** at
+`/api/growthbook-webhook` and put its `ewhk_…` secret in
+`GROWTHBOOK_EVENT_WEBHOOK_SECRET`. It expires the same tag the button does.
 
-It follows Standard Webhooks — HMAC-SHA256 over `{id}.{timestamp}.{body}`,
+For an **SDK** webhook, should a slot ever free up: format **Standard (no SDK
+payload)**, secret in `GROWTHBOOK_WEBHOOK_SECRET`. That path follows Standard
+Webhooks — HMAC-SHA256 over `{id}.{timestamp}.{body}`,
 base64, against the `v1,`-prefixed header — with two deliberate departures from
 GrowthBook's documented sample:
 
@@ -271,10 +312,19 @@ GrowthBook's documented sample:
 Plus a five-minute timestamp tolerance, without which a captured request stays
 replayable forever.
 
-**Verified locally** by computing signatures by hand — valid 200, forged 401,
-wrong-length 401, tampered body 401, ten-minute replay 400, missing headers 400,
-rotation pair 200 — and behaviourally: four requests before the webhook produced
-zero ruleset re-reads, three after produced two.
+Event Webhooks sign the body alone, so there is **no timestamp in the signed
+material** and a captured delivery stays valid indefinitely. Nothing in the
+route can detect that replay. It is tolerable only because of what a replay can
+do here: mark one cache tag stale — idempotent, one ruleset read, reveals
+nothing. An endpoint that did anything else would need a better scheme.
+
+**Verified locally** by computing signatures by hand. SDK path: valid 200,
+forged 401, wrong-length 401, tampered body 401, ten-minute replay 400, missing
+headers 400, rotation pair 200 — and behaviourally, four requests before the
+webhook produced zero ruleset re-reads, three after produced two. Event path:
+valid signature 200 (`webhook.test` acknowledged with `revalidated: null`,
+`feature.updated` with `revalidated: growthbook-payload`), forged 401, absent
+headers 400 — the last reproducing the original failure exactly.
 
 **Test:**
 
@@ -620,7 +670,7 @@ warned us. Local results don't count.
 - [x] Step 8's frozen timestamp is still frozen on Vercel
 - [x] Step 9's counter still shows a gap (3-ish vs 50)
 - [x] Deploy again, then re-check: which caches survived the deploy?
-- [ ] Step 4's webhook fires — still blocked, no webhook slot on the free plan
+- [x] Step 4's webhook fires — via an **Event** webhook, not the blocked SDK one (M18)
 - [ ] The ruleset isn't refetched on every request — **not measurable remotely**
 
 **The measurement that mattered.** Correlating Vercel's invocation id with the
@@ -783,44 +833,90 @@ curl -s "https://cdn.growthbook.io/api/features/$GROWTHBOOK_CLIENT_KEY" \
 
 ---
 
-## Step 12 — Precompute (build-time variants)
+## Step 12 — Precompute (build-time variants) ✅
 
 **Goal.** Make the hero variant fully static — decided before the page renders,
 with no streaming and no flash.
 
-**Why last.** It's the only step that restructures the app, and it's the only one
-that can genuinely fail. Everything else should be working first.
+**Outcome.** `/precomputed`, served from one of **12** prerendered pages.
+`/flags` is untouched and still streams the same flags, so the two URLs are the
+comparison rather than a before-and-after in the git history.
 
-**The idea.** `proxy.ts` works out the variant, encodes it into a hidden URL
-segment, and rewrites the request to a pre-built page for that combination. The
-browser URL never changes.
+### What it does
 
-**The key insight:** we prerender one page per *decision*, not per *attribute
-combination*. Our attributes have 180 combinations. Our flags produce
-3 × 2 × 2 = **12 outcomes**. Twelve pages, not 180 — and adding more countries
-or audiences adds zero pages.
+`proxy.ts` resolves the three shared flags, encodes them into a signed segment,
+and rewrites `/precomputed` → `/precomputed/<code>`. The browser URL never
+changes — a rewrite, not a redirect, so there is no extra round trip and the
+variant never ends up bookmarked or pasted into a bug report.
 
-**GrowthBook:** nothing new. Optionally look at **Experimentation → Namespaces**
-if we add more experiments later — mutually exclusive experiments don't multiply
-together, which keeps the page count down.
+**Twelve pages, not 180.** We prerender per *decision*, not per visitor. The
+attributes have 5 × 4 × 3 × 3 = 180 combinations; the flags have 2 × 2 × 3 = 12
+outcomes. Adding a country or an audience adds **zero** pages. Adding a flag
+with n options multiplies by n — that is the number to watch.
+`beta-entitlement` declares no `options` and correctly drops out: a per-person
+flag has no decision space, and including it would try to prerender one page per
+human being.
 
-Sticky bucketing also becomes relevant here (**Settings → General → Experiment
-Settings**) but it's Pro/Enterprise only, so check whether your plan has it.
+### Measured, on a local production build
 
-**Code:**
+| | `/flags` | `/precomputed` |
+| --- | --- | --- |
+| hero markup | byte 73950 — **streamed** | byte 3021 — **in the shell** |
+| hero skeleton | present | none at all |
+| entitlement | streamed | streamed |
+| variant, same visitor | `urgency` | `urgency` |
 
-- `src/proxy.ts` — evaluate and rewrite
-- `src/app/[code]/` — becomes a second root layout
-- Existing routes move into a route group
+`x-nextjs-prerender: 1`, and `</main>` at 12047 — so the hero is inside the
+static shell by document order, not merely present in the body.
 
-**Test:**
+### Route shape · deviation from this plan
 
-- [ ] Response header shows `x-nextjs-prerender: 1`
-- [ ] The hero is in the initial HTML — no streaming, no flash
-- [ ] A variant we didn't pre-build still loads fast (Next serves a shell and
-      upgrades in the background)
+This plan said `src/app/[code]/` as a second root layout with the existing
+routes moved into a route group. That is what the Vercel example does **because
+it precomputes the home page**; a root-level `[code]` would otherwise swallow
+every other route. We only precompute one route, so `app/precomputed/[code]/`
+needs no second root layout and no route group, and moves no existing file.
 
-**Done when:** the hero arrives fully formed in the first HTML response.
+### Three things this plan did not anticipate
+
+All three come from the same root: proxy runs *before* any render exists.
+
+1. **`precompute(flags)` takes no request**, and proxy has no `next/headers`. So
+   `readAttributes` and `resolveCountry` were split into pure functions over
+   `(headers, cookies)` with thin async wrappers, and proxy calls `evaluate`\'s
+   other half — `serialize` — with values it computed itself. One
+   implementation, because a proxy that derived attributes differently from the
+   render would route a visitor to a variant the page then disagreed with.
+2. **`getRuleset()` is a `use cache` scope** and cannot run in proxy at all.
+   `readRulesetForProxy()` is the uncached read, same Edge-Config-then-CDN
+   policy. This is the one place flag I/O sits on every request\'s critical path.
+3. **`params` counts as runtime data** under Cache Components and fails the
+   prerender when read in the page body — even for paths from
+   `generateStaticParams`. §13.1 M15.
+
+**The cost of the choice:** Vercel Toolbar overrides do not move the precomputed
+page, because proxy never routes through `flag()`. They still work on `/flags`,
+which is one more reason that route was kept rather than replaced.
+
+**Test — all passing:**
+
+- [x] Response header shows `x-nextjs-prerender: 1`
+- [x] The hero is in the initial HTML, before `</main>` — no streaming, no flash
+- [x] The same hero streams on `/flags` (the control; without it the first check
+      only proves the page is static, not that precompute made it so)
+- [x] Proxy and the render agree on the variant
+- [x] The browser URL never shows the code
+- [x] A code that does not verify falls back to defaults instead of erroring
+- [x] Two visitors get different entitlements — nothing per-person is baked into
+      a shared page
+
+**Not reachable:** "a variant we didn\'t pre-build still loads fast". All 12
+permutations *are* prebuilt, so no valid-but-unbuilt code exists to test with.
+It becomes testable the moment a filter is added to `generatePermutations`.
+
+**Done when:** the hero arrives fully formed in the first HTML response. It
+does — locally. **Not yet deployed**, and §5.3 is explicit that this is where
+this project has been wrong before.
 
 ---
 

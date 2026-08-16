@@ -24,9 +24,9 @@ import type { FeatureApiResponse } from "@growthbook/growthbook";
  *
  *   - **For `remote`:** on serverless, plain `use cache` is per-instance
  *     memory, so `updateTag` fired on one instance may not reach an instance
- *     already holding a warm entry. Since `/invalidate` is this project's whole
- *     flag-change mechanism (step 4's webhook being blocked), that is a
- *     correctness question, not a performance one.
+ *     already holding a warm entry. Both flag-change mechanisms this project
+ *     has — the `/invalidate` button and step 4's event webhook — go through
+ *     that path, so it is a correctness question, not a performance one.
  *   - **Against `remote`:** the work being cached is a single Edge Config read,
  *     which is cheap on Vercel. Per-instance memory amortises it across an
  *     instance's whole lifetime, whereas a shared store is a round trip per
@@ -35,15 +35,16 @@ import type { FeatureApiResponse } from "@growthbook/growthbook";
  *
  * Left as plain `use cache` because that is what M1 and M7 measured, and the
  * case for changing it is currently an argument rather than a number. See
- * RESEARCH-FLAGS.md §14 Q7 for the experiment that would settle it.
+ * RESEARCH-FLAGS.md §14 Q7 — including why two attempts to measure it failed.
  *
  * Two sources, because they are good at different things:
  *
  *   - **Vercel Edge Config**, when `EXPERIMENTATION_CONFIG` is set. GrowthBook
  *     syncs the payload into it. Reads are replicated to the runtime on Vercel,
- *     which is what will matter in `proxy.ts` at step 12 — proxy cannot use
- *     `use cache`, so precompute needs the ruleset on every request, and a CDN
- *     round trip there would sit on the critical path.
+ *     which is what `proxy.ts` depends on since step 12: proxy cannot use
+ *     `use cache`, so precompute reads the ruleset on every request through
+ *     `readRulesetForProxy()` below, and a CDN round trip there would sit on
+ *     the critical path of every request (RESEARCH-FLAGS.md F14).
  *   - **The GrowthBook CDN** otherwise, and as a fallback when Edge Config
  *     fails. Kept rather than replaced so §13's latency comparison still has a
  *     baseline to compare against.
@@ -70,18 +71,22 @@ const FAILURE_LIFE = { stale: 300, revalidate: 30, expire: 300 };
 /**
  * The cache profile for a successful read.
  *
- * Long, deliberately. The webhook that would normally expire this on a flag
- * change is unavailable — GrowthBook's free plan allows one SDK webhook per
- * organisation and Vercel's Edge Config sync already holds it — but shortening
- * the cache to compensate would mean polling a service that rarely changes, and
- * would blur the very thing this project measures.
+ * Long, deliberately. Shortening it to catch flag changes sooner would mean
+ * polling a service that changes a few times a week, and would blur the very
+ * thing this project measures.
  *
- * So invalidation is explicit instead: the `growthbook-payload` button on
- * /invalidate. On a demo that is better than a timer, because the moment the
- * value changes is a moment you chose.
+ * Invalidation is explicit instead, by two routes that expire the same tag:
+ * GrowthBook's **event webhook** (step 4 — the SDK webhook slot really is taken
+ * by Edge Config sync, but event webhooks are a separate system with a separate
+ * limit), and the `growthbook-payload` button on /invalidate for when you want
+ * the moment to be one you chose.
  *
- * `src/app/api/growthbook-webhook/route.ts` is built and tested and simply has
- * nothing pointed at it. Given a webhook slot it takes over, unchanged.
+ * **`hours` is less long than it reads.** The profile is
+ * `{ stale: 300, revalidate: 3600, expire: 86400 }`, and `stale` is what
+ * governs: past five minutes an entry is refreshed on next touch. A flag change
+ * propagates on its own within five minutes with no invalidation at all
+ * (RESEARCH-FLAGS.md M19). Invalidation makes it immediate; it is not what makes
+ * it happen.
  */
 const SUCCESS_LIFE = "hours";
 

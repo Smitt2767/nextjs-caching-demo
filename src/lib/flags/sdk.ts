@@ -18,9 +18,9 @@ import type { Attributes } from "@/lib/personas";
  *   2. `.well-known/vercel/flags` discovery, which lists every flag declared
  *      here whether or not a component happens to render it.
  *   3. `setTrackingCallback` + `after()` for exposure logging (step 9).
- *   4. **`precompute`** — step 12. Encoding the decision space into the URL is
- *      a Flags SDK feature, not a GrowthBook one, and hand-rolling the encoding
- *      and permutation generation is the entire Tier 2 mechanism.
+ *   4. **`precompute`** — step 12, now built. Encoding the decision space into
+ *      the URL is a Flags SDK feature, not a GrowthBook one, and hand-rolling
+ *      the encoding and permutation generation is the entire Tier 2 mechanism.
  *
  * A flag resolves to a **value** — that is the whole surface, and the pages are
  * written to it. GrowthBook also reports *why* it decided (rule id, reason code,
@@ -106,7 +106,7 @@ function readStatic<T>(f: (request: Request) => Promise<T>): Promise<T> {
  * The Flags SDK encodes a precomputed decision as an index into the declared
  * option list, so a flag with no `options` cannot be precomputed — it drops out
  * of the permutation set and quietly falls back to request-time evaluation.
- * Declaring them now means step 12 needs no changes here.
+ * Step 12 needed no change here because of it.
  */
 
 /**
@@ -191,7 +191,8 @@ export const betaEntitlement = flag<boolean, Attributes>({
 });
 
 /**
- * The group step 12 will precompute over.
+ * The group precomputed at step 12, in `precompute.ts` and
+ * `app/precomputed/[code]/`.
  *
  * Order is load-bearing: the generated code is positional, so reordering this
  * array invalidates every precomputed URL already in the wild. Append only.
