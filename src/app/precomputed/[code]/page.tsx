@@ -8,6 +8,7 @@ import {
   EntitlementPanel,
   EntitlementSkeleton,
 } from "@/app/_components/entitlement-panel";
+import { PersonaSwitcher } from "@/app/_components/persona-switcher";
 import { PrecomputedHero } from "@/app/_components/precomputed-hero";
 import { FLAG_DEFAULTS } from "@/lib/flags/evaluate";
 import {
@@ -173,6 +174,7 @@ export default async function PrecomputedPage({
           step="Step 12 · precompute"
           title="The hero arrives fully formed"
           summary="No Suspense boundary, no skeleton, no flash — it was rendered at build time for exactly this decision."
+          action={<PersonaSwitcher decidedInProxy />}
           description={
             <>
               <p>
@@ -199,6 +201,26 @@ export default async function PrecomputedPage({
                 combinations; our flags have twelve outcomes. Adding a country
                 or an audience adds zero pages — adding a three-option flag
                 triples them.
+              </p>
+              <p>
+                <strong className="text-ink">
+                  Switch persona and watch the code above change.
+                </strong>{" "}
+                The corporate persona is excluded from the experiment by a
+                forced rule and pins to <code className="font-mono">control</code>;
+                the others differ by how their shared bucketing id hashes. Each
+                one lands on a different prebuilt page, and the hero is already
+                in it.
+              </p>
+              <p>
+                That switch costs a <strong className="text-ink">full page
+                load</strong> here and nothing at all on{" "}
+                <Link href="/flags">/flags</Link>, which is the trade in
+                miniature. Proxy decides <em>before</em> the render, so it had
+                already run — with your old cookie — by the time the switcher
+                wrote the new one. Only a real navigation re-enters the routing
+                decision. Deciding early is cheaper to serve and more expensive
+                to change your mind about.
               </p>
               <p className="border-l-[3px] border-amber-500 pl-3">
                 <strong className="text-ink">The cost is paid in proxy.</strong>{" "}

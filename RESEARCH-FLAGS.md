@@ -848,6 +848,7 @@ order:
 | **F14** | Precompute puts uncached ruleset I/O in proxy, on the critical path of **every** request — the thing the Next docs explicitly warn proxy is not for | Medium | Deployed latency only; invisible locally, where Edge Config and the CDN are both fast | Edge Config, whose reads are replicated to the runtime. Without `EXPERIMENTATION_CONFIG` the fallback is a CDN round trip per request, which is worse than the streaming precompute replaced (§13.1 M17) |
 | **F15** | Webhook invalidation **races** the Edge Config sync it depends on; the refetch wins, caches the old payload, and the invalidation makes staleness worse | Medium | Nothing automated. Looks exactly like "the webhook did not fire" | `revalidateTag(tag, "max")` so nobody waits on the refetch; `/invalidate` as the manual override. **Unmeasured** (§13.1 M18) |
 | **F16** | An unverifiable precompute segment throws inside the page and the response is a **200 with an empty `<main>`** — no error, nothing saying why | Medium | Only by looking at the body; the status code is fine | Catch and fall back to declared defaults, and say so in the UI. Regression test in `e2e/flags.spec.ts` (§13.1 M17) |
+| **F17** | `router.refresh()` on a rewritten route mounts a second page tree beside the first — two `<main>`s — because the URL now resolves elsewhere | Low | Visual, and only after an interaction that changes the decision | A real navigation, which is the only thing that re-enters routing. Guarded by a `main` count in the switcher's e2e test (§13.1 M20) |
 
 F1 is the one to take seriously. Every other risk on this list costs money or
 milliseconds. F1 costs you the ability to know whether any of your product
@@ -1660,6 +1661,42 @@ reports cache-entry identity directly — a filled-at stamp captured inside the
 minutes on its own, and within 24 hours in the worst case. `/invalidate` and the
 webhook are about making that *immediate*, not about making it happen.
 
+
+---
+
+**M20. On a rewritten route, `router.refresh()` mounts a second page instead of
+replacing the first.** **[measured]** · *step 12*
+
+The persona switcher writes a cookie in a Server Action. On `/flags` that is
+enough — returning from an action re-renders the route and the panels re-stream.
+On `/precomputed` it is not, because the variant is decided in proxy **before**
+the render, and proxy already ran on that request with the old cookie. The
+switcher appears to do nothing, exactly once.
+
+The obvious repair is `router.refresh()`. It does not work here:
+
+```
+initial   : selects=1 heroes=1 mains=1
+after 3s  : selects=2 heroes=2 mains=2
+```
+
+Both `<select>` elements sit at the same DOM path under
+`SECTION[precomputed-hero-section]`. `refresh()` re-fetches the current URL,
+proxy rewrites it to a *different* underlying route than the one already
+mounted, and the router mounts the new tree beside the old one rather than
+reconciling with it.
+
+**The general shape:** a rewritten route is the case where "refresh this page"
+and "request this URL again" stop being the same operation, because what the URL
+resolves to can change between them. Only a real navigation re-enters the
+routing decision. `window.location.reload()` is correct and, on a prerendered
+page, close to the cheapest thing the app can do.
+
+**This is the cost of deciding early, stated plainly.** Precompute buys a hero in
+the first HTML and pays for it when something the decision depended on changes:
+`/flags` re-streams in place, `/precomputed` needs a whole new request. Cheaper
+to serve, more expensive to change your mind about.
+
 ---
 
 ## 14. Open questions
@@ -1720,4 +1757,3 @@ live with its secret configured.
 
 - Per-request ruleset read count on the deployment — round-trip noise swamps the
   signal (§13.1, step 10).
-

@@ -714,6 +714,50 @@ test.describe("flags: precompute", () => {
     expect(new URL(page.url()).pathname).toBe("/precomputed");
   });
 
+  test("the persona switcher re-enters the routing decision", async ({
+    page,
+  }) => {
+    /**
+     * Switching persona on this route is not the same operation it is on
+     * `/flags`, and the difference is the whole point of step 12.
+     *
+     * The Server Action writes the cookie, but proxy had already run — with the
+     * *old* cookie — before the action existed. Re-rendering would faithfully
+     * re-render the page proxy already chose. Only a real navigation asks it
+     * again, which is why the switcher takes `decidedInProxy` here.
+     *
+     * The `mains` count is a regression guard, not decoration. `router.refresh()`
+     * was tried first and mounted the new tree *beside* the old one — two
+     * `<main>` elements, two heroes, two switchers — because a rewritten URL can
+     * resolve to a different route between one request and the next.
+     */
+    await page.goto("/precomputed");
+    await expect(page.getByTestId("precomputed-hero")).toBeVisible();
+
+    const pick = async (persona: string) => {
+      await Promise.all([
+        page.waitForEvent("load"),
+        page.getByTestId("persona-select").selectOption(persona),
+      ]);
+      await expect(page.getByTestId("precomputed-hero")).toBeVisible();
+      expect(await page.locator("main").count()).toBe(1);
+      return page.getByTestId("precomputed-hero-variant").textContent();
+    };
+
+    // A forced rule excludes corporate visitors from the experiment, so this
+    // one is pinned however the bucketing id hashes.
+    expect(await pick("corporate-desktop-us")).toBe("control");
+
+    // Every other persona shares one bucketing id — yours — so they share a
+    // variant. Which variant that is depends on the id, so it is compared
+    // rather than named.
+    const first = await pick("anxiety-mobile-in");
+    expect(await pick("returning-tablet-us-night")).toBe(first);
+
+    // The rewrite never reaches the address bar, switch or no switch.
+    expect(new URL(page.url()).pathname).toBe("/precomputed");
+  });
+
   test("a code that does not verify falls back instead of erroring", async ({
     page,
   }) => {
