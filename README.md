@@ -1,20 +1,22 @@
 # Cache Components demo
 
 A measurement rig for Next.js 16 Cache Components, built one finding at a time.
-Five routes:
+Six routes:
 
 | Route | What it is |
 | --- | --- |
 | `/ppr` | The original demo — what Next prerenders into the static shell versus what it streams at request time, colour-coded. Most of this README is about this page. |
 | `/cache-api` | Reference cards for `use cache`, `cacheLife`, `cacheTag`, and the three ways to invalidate. |
-| `/flags` | Feature flags and A/B experiments under Cache Components, via GrowthBook and Vercel's Flags SDK. Twelve steps, all done — see [FLAGS-PLAN.md](./FLAGS-PLAN.md); the findings are in [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). New to flags? Start with [FLAGS-EXPLAINED.md](./FLAGS-EXPLAINED.md). |
+| `/flags` | Feature flags and A/B experiments under Cache Components, via GrowthBook and Vercel's Flags SDK. Twelve steps, all done — see [FLAGS-PLAN.md](./FLAGS-PLAN.md); the findings are in [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). |
 | `/precomputed` | The same flags decided in `proxy.ts` *before* the render and served from one of twelve prebuilt pages. The direct comparison against `/flags`. |
 | `/invalidate` | Buttons that expire specific cache tags, so you can watch the effect on the other pages. |
+| `/flags-explained` | The four kinds of feature flag in plain English, using the real live configuration. Rendered from `src/content/flags-explained.md`. |
 
-**If you have never used a feature-flag system**, read
-[FLAGS-EXPLAINED.md](./FLAGS-EXPLAINED.md) first. It explains the four kinds of
-flag in this project — fixed, targeted, experiment, and per-person — in plain
-English, using the real live configuration.
+**If you have never used a feature-flag system**, start at **`/flags-explained`**.
+It explains the four kinds of flag in this project — fixed, targeted, experiment,
+and per-person — in plain English, using the real live configuration. The source
+is `src/content/flags-explained.md`; the route renders it, so the two cannot
+drift apart.
 
 Two companion reports carry the measurements rather than the intentions:
 [RESEARCH.md](./RESEARCH.md) for caching, [RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md)

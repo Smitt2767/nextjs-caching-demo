@@ -15,6 +15,8 @@ export const CACHE_TAGS = {
   catalogPanel: "catalog-panel",
   /** `highlight()` — the Shiki-rendered code excerpts. */
   snippets: "snippets",
+  /** `readExplainer()` — the markdown behind /flags-explained. */
+  explainer: "explainer",
   /** `getCachedCountryOffer(code)` — cached lookup, one entry per country. */
   countryOffer: (code: CountryCode) => `country-offer-${code}` as const,
   /** `CachedCountryPanel` — cached markup, one entry per country. */

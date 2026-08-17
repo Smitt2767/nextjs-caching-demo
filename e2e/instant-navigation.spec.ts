@@ -193,6 +193,47 @@ test.describe("index", () => {
   });
 });
 
+test.describe("/flags-explained", () => {
+  /**
+   * The explainer is the one page here with no flags on it, which is what makes
+   * it fully static — no cookies, no headers, no evaluation. The markdown is
+   * read inside a `use cache` scope, so it resolves at build.
+   */
+  test("is prerendered whole, with no streamed region", async ({ page }) => {
+    const response = await page.request.get("/flags-explained");
+    expect(response.status()).toBe(200);
+    // Matched loosely: on a fully static route Next sets this header twice, so
+    // Playwright joins it to "1, 1". Asserting equality would be asserting a
+    // detail of header joining rather than that the route is prerendered.
+    expect(response.headers()["x-nextjs-prerender"]).toMatch(/^1/);
+
+    const html = await response.text();
+    const closingMain = html.indexOf("</main>");
+    expect(closingMain).toBeGreaterThan(-1);
+
+    // Nothing may arrive after the shell: a streamed region would mean the page
+    // acquired a request-time dependency it has no business having.
+    expect(html.slice(closingMain)).not.toContain("<template");
+  });
+
+  test("renders the markdown rather than restating it", async ({ page }) => {
+    await page.goto("/flags-explained");
+
+    // Structures only markdown produces: GFM tables and fenced blocks. If the
+    // renderer were dropped, the text would survive and these would not.
+    await expect(page.getByRole("table")).toHaveCount(6);
+    expect(await page.locator("article pre").count()).toBe(10);
+
+    // The four flag kinds are the spine of the document.
+    // Level 2 and anchored: "Kind 1" also appears inside an h3 further down.
+    for (const kind of ["Kind 1", "Kind 2", "Kind 3", "Kind 4"]) {
+      await expect(
+        page.getByRole("heading", { level: 2, name: new RegExp(`^${kind}`) }),
+      ).toBeVisible();
+    }
+  });
+});
+
 test.describe("static wrappers", () => {
   // The wrapper requirement: frame, title, description and code for every slot
   // must be in the prerendered document, never inside the boundary they

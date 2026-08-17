@@ -4,7 +4,7 @@ Plain English, with the real configuration from this project. No prior knowledge
 assumed.
 
 If you want the architecture and the measurements, those are in
-[RESEARCH-FLAGS.md](./RESEARCH-FLAGS.md). This document is just: *what is a flag,
+`RESEARCH-FLAGS.md` in the repository. This document is just: *what is a flag,
 what kinds are there, and what happens when someone loads the page.*
 
 ---

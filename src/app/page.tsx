@@ -52,7 +52,7 @@ const PAGES = [
     accent: "text-amber-700 dark:text-amber-400",
     title: "Feature flags & experiments",
     body: "Where a flag decision may be read, and where its exposure event must fire. Built one step at a time — see FLAGS-PLAN.md.",
-    meta: "11 steps · targeting · experiments · exposure events",
+    meta: "12 steps · targeting · experiments · exposure events",
   },
   {
     href: "/precomputed",
@@ -62,6 +62,15 @@ const PAGES = [
     title: "Precomputed variants",
     body: "The same flags as /flags, decided in proxy before the render and served from one of twelve prebuilt pages. The hero arrives in the first HTML instead of streaming in.",
     meta: "12 pages, not 180 · one per decision, not per visitor",
+  },
+  {
+    href: "/flags-explained",
+    testId: "flags-explained-link",
+    rail: "bg-ink",
+    accent: "text-ink",
+    title: "How flags work",
+    body: "The four kinds of feature flag — fixed, targeted, experiment, per-person — in plain English, using the real live configuration. Start here if flags are new to you.",
+    meta: "no prior knowledge assumed · the only page here with no flags on it",
   },
 ] as const;
 
